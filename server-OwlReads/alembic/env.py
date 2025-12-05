@@ -1,0 +1,65 @@
+import os
+import sys
+from logging.config import fileConfig
+
+from sqlalchemy import engine_from_config, pool
+from alembic import context
+
+# Добавляем корень проекта в sys.path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+# Загружаем .env (если используете)
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
+
+# Конфигурация Alembic
+config = context.config
+
+# Если в .env есть DATABASE_URL, подставляем его в конфиг alembic
+db_url = os.getenv("DATABASE_URL") or os.getenv("DATABASE_URL_LOCAL")
+if db_url:
+    config.set_main_option("sqlalchemy.url", db_url)
+
+# Логирование
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+# Импортируем Base и модели, чтобы метаданные были зарегистрированы
+from app.db.base import Base
+import app.models.popular_quotes
+import app.models.genre
+import app.models.books_editions
+import app.models.literature_works
+import app.models.users_book_notes
+import app.models.users_book_quotes
+import app.models.users_reading_records
+import app.models.users_book_rating
+import app.models.users_top_characters
+import app.models.users_challenge_books_alphabet
+import app.models.users_challenge_book_of_year
+import app.models.users_challenges
+import app.models.users_statistics
+import app.models.users_personal_data
+import app.models.users_book_review_genres
+import app.models.books_categories
+import app.models.users_book_review
+
+target_metadata = Base.metadata
+
+def run_migrations_online():
+    connectable = engine_from_config(
+        config.get_section(config.config_ini_section),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+    with connectable.connect() as connection:
+        context.configure(connection=connection, target_metadata=target_metadata)
+        with context.begin_transaction():
+            context.run_migrations()
+
+if context.is_offline_mode():
+    context.configure(url=config.get_main_option("sqlalchemy.url"), target_metadata=target_metadata)
+    with context.begin_transaction():
+        context.run_migrations()
+else:
+    run_migrations_online()

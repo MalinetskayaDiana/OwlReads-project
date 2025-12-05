@@ -1,0 +1,84 @@
+Docker (управление стеком):
+
+1. Запустить все сервисы в фоне (поднимет контейнеры, сети, подключит volumes):
+	docker-compose up -d
+
+2. Остановить и удалить контейнеры и сети, но сохранить тома с данными:
+	docker-compose down
+
+3. Остановить и удалить контейнеры, сети и тома (потеря всех данных в volumes):
+	docker-compose down -v
+
+4. Остановить конкретные запущенные контейнеры без удаления:
+	docker-compose stop
+
+5. Показать запущенные контейнеры:
+	docker ps
+
+6. Показать все контейнеры (включая остановленные):
+	docker ps -a
+
+7. Смотреть логи контейнера (в реальном времени):
+	docker-compose logs -f owlreads-db
+
+8. Выполнить команду внутри контейнера (например, psql):
+	docker exec -it owlreads-db psql -U owlreads_admin -d owlreads_db -c "\dt"
+
+
+
+
+Виртуальное окружение и зависимости (Python):
+
+1. Создать виртуальное окружение в папке проекта:
+	python -m venv .venv
+
+2. Активировать окружение (PowerShell):
+	.\.venv\Scripts\Activate.ps1
+
+3. Деактивировать окружение:
+	deactivate
+
+4. Установить набор пакетов (пример — для работы с БД и настройками):
+	pip install sqlalchemy[asyncio] asyncpg python-dotenv pydantic-settings fastapi uvicorn
+
+5. Зафиксировать текущие зависимости в requirements.txt:
+	pip freeze > requirements.txt
+
+
+
+
+Запуск сервера разработки и перезагрузка:
+
+1. Запустить FastAPI с uvicorn (разработка, авто‑перезагрузка при изменениях):
+	python -m uvicorn app.main:app --reload --port 8000
+
+
+
+
+Быстрая проверка API и DB (проверки):
+
+1. Проверить корневой эндпоинт в PowerShell:
+	curl http://127.0.0.1:8000/
+
+2. POST-запрос для теста (PowerShell curl):
+	curl -Method POST http://127.0.0.1:8000/users -ContentType "application/json" -Body '{"email":"test@example.com","display_name":"Diana","password":"secret"}'
+
+3. Посмотреть таблицы в базе:
+	docker exec -it owlreads-db psql -U owlreads_admin -d owlreads_db -c "\dt"
+
+
+
+
+Остановка работы:
+	deactivate
+	docker-compose down
+
+
+
+
+Возобновление работы:
+	docker-compose up -d
+	.\.venv\Scripts\Activate.ps1
+	python -m uvicorn app.main:app --reload --port 8000
+
+
