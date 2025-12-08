@@ -18,7 +18,9 @@ export default function App() {
       await Font.loadAsync({
         "Marck Script-Regular": require("./assets/fonts/MarckScript-Regular.ttf"),
         "Inter-Regular": require("./assets/fonts/Inter-Regular.otf"),
+        "Inter-Medium": require("./assets/fonts/Inter-Medium.otf"),
         "VollkornSC-Regular" : require("./assets/fonts/VollkornSC-Regular.ttf"),
+        "VollkornSC-Bold" : require("./assets/fonts/VollkornSC-Bold.ttf"),
       });
       setFontsLoaded(true);
     }

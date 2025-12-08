@@ -1,12 +1,12 @@
 // screens/LibraryScreen.js
-import React from "react";
-import { View, Image, Text, FlatList } from "react-native";
+import React, {useState} from "react";
+import { View, FlatList, TouchableWithoutFeedback  } from "react-native";
 import styled from "styled-components/native";
 import NavigationBar from "../components/Navigation_bar";
 import { BookCard } from "../components/Book_card";
 import { TabBar } from "../components/Tab_bar";
-
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { TextBox } from "../components/TextBox_props";
+import RatingStars from "../components/Rating_starts";
 
 const OwlReadsTitle = styled.Text`
   color: #fdf5e2;
@@ -25,8 +25,63 @@ const Separator = styled.View`
   margin-top: 5px;
 `;
 
+const Overlay = styled.View`
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0,0,0,0.65);
+  justify-content: flex-end;
+  align-items: center;
+`;
+
+const Circle = styled.View`
+  position: absolute;
+  bottom: -337px;
+  width: 770px;
+  height: 770px;
+  border-radius: 385px;
+  background-color: #FDF5E2;
+`;
+
+
+const OverlayContent = styled.View`
+  flex: 1;
+  align-items: center;
+  bottom: 0;
+  position: absolute;
+  width: 100%;
+  padding: 12px;
+  gap: 8px;
+  padding-bottom: 124px;
+`;
+
+const OverlayCover = styled.Image`
+  height: ${({ height }) => height || 160}px;
+  width: ${({ width }) => width || 110}px;
+  border-radius: 7px;
+`;
+
+const OverlayTitle = styled.Text`
+  font-family: VollkornSC-Regular;
+  font-size: 17px;
+  color: #890524;
+  align-self: flex-start;
+`;
+
+const OverlayAuthor = styled.Text`
+  font-family: Inter-Regular;
+  font-size: 14px;
+  color: #2F2017;
+  align-self: flex-start;
+`;
+
 
 export default function LibraryScreen() {
+  const [overlayVisible, setOverlayVisible] = useState(false);
+  const [selectedBook, setSelectedBook] = useState(null);
+
   const icons = [
     { name: "home", source: require("../assets/home.png"), screen: "Home" },
     { name: "open_book", source: require("../assets/open_book_active.png"), screen: "Library" },
@@ -101,7 +156,10 @@ export default function LibraryScreen() {
             title={item.title}
             author={item.author}
             rating={item.rating}
-            onPress={() => console.log(`Открыть книгу: ${item.title}`)}
+            onPress={() => {
+                setSelectedBook(item);
+                setOverlayVisible(true);
+              }}
           />
         )}
           contentContainerStyle={{ paddingBottom: 260, paddingTop: 10 }}
@@ -109,6 +167,35 @@ export default function LibraryScreen() {
       </View>
       <NavigationBar icons={icons} />
       <TabBar color={"#D7C1AB"}/>
+
+      {overlayVisible && selectedBook && (
+        <TouchableWithoutFeedback onPress={() => setOverlayVisible(false)}>
+          <Overlay>
+            <Circle/>
+            <OverlayContent>
+                <OverlayCover source={selectedBook.cover} resizeMode="cover" />
+                
+                <View style={{ alignSelf: 'center' }}>
+                  <TextBox text={selectedBook.category} color={selectedBook.categorycolor}/>
+                </View>
+                
+                <OverlayTitle>{selectedBook.title}</OverlayTitle>
+                
+                <OverlayAuthor>{selectedBook.author}</OverlayAuthor>
+                
+                <View style={{ alignSelf: 'flex-start', marginTop: 8 }}>
+                  <RatingStars
+                    rating={selectedBook.rating}
+                    size={40}
+                    filledImage={require('../assets/star_filled.png')}
+                    emptyImage={require('../assets/star_empty.png')}
+                  />
+                </View>
+
+              </OverlayContent>
+          </Overlay>
+        </TouchableWithoutFeedback>
+      )}
     </View>
   );
 }
