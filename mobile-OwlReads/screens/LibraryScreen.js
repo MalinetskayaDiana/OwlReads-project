@@ -7,6 +7,7 @@ import { BookCard } from "../components/Book_card";
 import { TabBar } from "../components/Tab_bar";
 import { TextBox } from "../components/TextBox_props";
 import RatingStars from "../components/Rating_starts";
+import RedButton from "../components/Red_button";
 
 const OwlReadsTitle = styled.Text`
   color: #fdf5e2;
@@ -54,7 +55,7 @@ const OverlayContent = styled.View`
   width: 100%;
   padding: 12px;
   gap: 8px;
-  padding-bottom: 124px;
+  padding-bottom: 60px;
 `;
 
 const OverlayCover = styled.Image`
@@ -85,7 +86,7 @@ export default function LibraryScreen() {
   const icons = [
     { name: "home", source: require("../assets/home.png"), screen: "Home" },
     { name: "open_book", source: require("../assets/open_book_active.png"), screen: "Library" },
-    { name: "add_book", source: require("../assets/add_book.png"), screen: "Library" }, // например, тоже в Library
+    { name: "add_book", source: require("../assets/add_book.png"), screen: "Library" },
     { name: "message", source: require("../assets/message.png"), screen: "Chats" },
     { name: "user", source: require("../assets/user.png"), screen: "Account" },
   ];
@@ -191,8 +192,8 @@ export default function LibraryScreen() {
                     emptyImage={require('../assets/star_empty.png')}
                   />
                 </View>
-
-              </OverlayContent>
+                <RedButton name={"Подробнее"} screen={"Book"}/>
+            </OverlayContent>
           </Overlay>
         </TouchableWithoutFeedback>
       )}

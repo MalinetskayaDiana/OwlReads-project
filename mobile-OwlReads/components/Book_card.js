@@ -10,13 +10,19 @@ const CardContainer = styled(TouchableOpacity)`
   align-items: center;
   margin-horizontal: 12px;
   border-radius: 20px;
-  background-color: rgba(253, 245, 226, 0.7);
+  background-color: rgba(253, 245, 226);
   padding: 12px;
   shadow-color: #A28C75;
   shadow-offset: 1px 2px;
   shadow-opacity: 0.8;
   shadow-radius: 4px;
   margin-bottom: 10px; 
+  shadow-color: #230109;
+  shadow-offset: 0px 4px;
+  shadow-opacity: 0.3;
+  shadow-radius: 4px;
+
+  elevation: 6;
 `;
 
 const CoverImage = styled.Image`
@@ -40,7 +46,7 @@ const TitleText = styled.Text`
 `;
 
 const AuthorText = styled.Text`
-  font-family: Inter-Regular;
+  font-family: Regular;
   font-size: 13px;
   color: #2F2017;
   margin-top: 4px;

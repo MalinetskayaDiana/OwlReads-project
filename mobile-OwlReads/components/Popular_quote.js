@@ -12,6 +12,12 @@ const QuoteContainer = styled.View`
   width: auto;
   margin-left: 16px;
   margin-right: 16px;
+  shadow-color: #230109;
+  shadow-offset: 0px 4px;
+  shadow-opacity: 0.3;
+  shadow-radius: 4px;
+
+  elevation: 6;
 `;
 
 const QuoteText = styled.Text`

@@ -20,13 +20,30 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "navigationBar": {
+        "visible": true,
+        "backgroundColor": "transparent",
+        "barStyle": "light-content"
+      },
+      "androidStatusBar": {
+        "backgroundColor": "transparent",
+        "barStyle": "dark-content",
+        "translucent": true
+      },
+      "edgeToEdgeEnabled": true,
+      "softwareKeyboardLayoutMode": "resize",
+      "package": "com.dianamalinetskaya.mobileOwlReads"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-font"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "b0271684-56b9-4608-9f7a-6b403c4e316a"
+      }
+    }
   }
 }

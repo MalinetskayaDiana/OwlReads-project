@@ -2,6 +2,7 @@
 import React, {useState} from "react";
 import { View, Image, ScrollView, TouchableOpacity, TouchableWithoutFeedback } from "react-native";
 import styled from "styled-components/native";
+import { useNavigation } from "@react-navigation/native"; 
 import NavigationBar from "../components/Navigation_bar";
 import { TabBar } from "../components/Tab_bar";
 
@@ -35,10 +36,11 @@ const MenuContainer = styled.View`
   padding-vertical: 5px;
   padding-left: 15px;
   padding-right: 40px;
-  elevation: 5;
+  elevation: 6;
   z-index: 10; 
-  shadow-color: #000;
-  shadow-opacity: 0.2;
+  shadow-color: #230109;
+  shadow-offset: 0px 4px;
+  shadow-opacity: 0.3;
   shadow-radius: 4px;
 `;
 
@@ -132,6 +134,7 @@ const StyledText = styled.Text`
 
 export default function AccountScreen() {
   const [menuVisible, setMenuVisible] = useState(false);
+  const navigation = useNavigation(); 
 
   const icons = [
     { name: "home", source: require("../assets/home.png"), screen: "Home" },
@@ -162,7 +165,10 @@ export default function AccountScreen() {
                 <MenuItem onPress={() => { console.log("Настройка профиля"); setMenuVisible(false); }}>
                   <MenuText>Настройка профиля</MenuText>
                 </MenuItem>
-                <MenuItem onPress={() => { console.log("Выйти из аккаунта"); setMenuVisible(false); }}>
+                 <MenuItem onPress={() => { 
+                  setMenuVisible(false); 
+                  navigation.navigate("Start");
+                }}>
                   <MenuTextLogout>Выйти из аккаунта</MenuTextLogout>
                 </MenuItem>
               </MenuContainer>

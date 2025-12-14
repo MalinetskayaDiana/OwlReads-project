@@ -1,6 +1,7 @@
 // components/Rating_star.js
 import React from 'react';
 import styled from 'styled-components/native';
+import { TouchableOpacity } from 'react-native';
 
 const StarsRow = styled.View`
   flex-direction: row;
@@ -17,7 +18,8 @@ const RatingStars = ({
   rating = 0, 
   size = 40, 
   filledImage, 
-  emptyImage 
+  emptyImage,
+  onRate
 }) => {
   const stars = Array.from({ length: 5 }, (_, i) => i);
 
@@ -26,11 +28,12 @@ const RatingStars = ({
       {stars.map((_, index) => {
         const isFilled = index < rating;
         return (
-          <StarImage
-            key={index}
-            source={isFilled ? filledImage : emptyImage}
-            size={size}
-          />
+          <TouchableOpacity key={index} onPress={() => onRate && onRate(index + 1)}>
+            <StarImage
+              source={isFilled ? filledImage : emptyImage}
+              size={size}
+            />
+          </TouchableOpacity>
         );
       })}
     </StarsRow>

@@ -21,7 +21,7 @@ export default function HomeScreen() {
   const icons = [
     { name: "home", source: require("../assets/home_active.png"), screen: "Home" },
     { name: "open_book", source: require("../assets/open_book.png"), screen: "Library" },
-    { name: "add_book", source: require("../assets/add_book.png"), screen: "Library" }, // например, тоже в Library
+    { name: "add_book", source: require("../assets/add_book.png"), screen: "Library" },
     { name: "message", source: require("../assets/message.png"), screen: "Chats" },
     { name: "user", source: require("../assets/user.png"), screen: "Account" },
   ];
@@ -48,7 +48,6 @@ export default function HomeScreen() {
           quote_text="Вот мой секрет, он очень прост: зорко одно лишь сердце. Самого главного глазами не увидишь"
           quote_author="@Маленький принц"
         />
-        <Text style ={{marginLeft: 25,}}>Сейчас читаю</Text>
       </View>
       <NavigationBar icons={icons} />
       <TabBar color={"#D7C1AB"}/>

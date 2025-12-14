@@ -42,8 +42,9 @@ const ChatTitle = styled.Text`
 
 
 export default function AddNewChatItem() {
+  const navigation = useNavigation();
   return (
-    <TouchableOpacity>
+    <TouchableOpacity onPress={() => navigation.navigate("Сorrespondence")}>
       <ChatContainer>
 
         <ChatIconWrapper>
