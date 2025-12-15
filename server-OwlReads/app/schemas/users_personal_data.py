@@ -11,10 +11,15 @@ class UserPersonalDataBase(BaseModel):
 class UserPersonalDataCreate(UserPersonalDataBase):
     pass
 
+class UserVerifyEmail(BaseModel):
+    email: EmailStr
+    code: str
+
 class UserPersonalData(UserPersonalDataBase):
     id: int
     registered_at: datetime
     updated_at: datetime
+    is_verified: bool
 
     class Config:
-        orm_mode = True
+        from_attributes = True

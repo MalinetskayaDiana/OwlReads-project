@@ -7,11 +7,11 @@ from app.schemas.genre import GenreRead
 
 router = APIRouter()
 
-@router.get("/genres/", response_model=list[GenreRead])
+@router.get("/", response_model=list[GenreRead])
 def list_genres(db: Session = Depends(get_db)):
     return db.query(GenreModel).order_by(GenreModel.id).all()
 
-@router.get("/genres/{genre_id}/", response_model=GenreRead)
+@router.get("/{genre_id}/", response_model=GenreRead)
 def get_genre(genre_id: int, db: Session = Depends(get_db)):
     genre = db.query(GenreModel).get(genre_id)
     if not genre:

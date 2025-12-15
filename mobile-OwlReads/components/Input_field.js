@@ -26,11 +26,14 @@ const ErrorText = styled.Text`
   font-size: 12px;
 `;
 
-const InputField = ({ 
-  value, 
-  onChangeText, 
-  placeholder, 
-  error 
+const InputField = ({
+  value,
+  onChangeText,
+  placeholder,
+  error,
+  secureTextEntry, // <--- Добавить
+  keyboardType,    // <--- Добавить (для email и цифр)
+  autoCapitalize   // <--- Добавить (чтобы email не был с большой буквы)
 }) => {
   return (
     <Wrapper>
@@ -40,6 +43,9 @@ const InputField = ({
           onChangeText={onChangeText}
           placeholder={placeholder}
           placeholderTextColor="rgba(47, 32, 23, 0.3)"
+          secureTextEntry={secureTextEntry} // <--- Использовать
+          keyboardType={keyboardType}       // <--- Использовать
+          autoCapitalize={autoCapitalize}   // <--- Использовать
         />
       </Container>
       {error ? <ErrorText>{error}</ErrorText> : null}

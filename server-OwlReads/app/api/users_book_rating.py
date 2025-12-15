@@ -8,15 +8,15 @@ from app.crud import users_book_rating as crud
 
 router = APIRouter()
 
-@router.post("/ratings/", response_model=UserBookRating, status_code=201)
+@router.post("/", response_model=UserBookRating, status_code=201)
 def create_rating(rating: UserBookRatingCreate, db: Session = Depends(get_db)):
     return crud.create_rating(db, rating)
 
-@router.get("/ratings/", response_model=List[UserBookRating])
+@router.get("/", response_model=List[UserBookRating])
 def read_ratings(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return crud.get_ratings(db, skip=skip, limit=limit)
 
-@router.get("/ratings/{rating_id}/", response_model=UserBookRating)
+@router.get("/{rating_id}/", response_model=UserBookRating)
 def read_rating(rating_id: int, db: Session = Depends(get_db)):
     rating = crud.get_rating(db, rating_id)
     if not rating:

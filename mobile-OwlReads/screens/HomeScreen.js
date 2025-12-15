@@ -1,10 +1,12 @@
 // screens/HomeScreen.js
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { View, Image, Text } from "react-native";
 import styled from "styled-components/native";
 import Quote from "../components/Popular_quote";
 import NavigationBar from "../components/Navigation_bar"
 import { TabBar } from "../components/Tab_bar";
+
+import api from "../src/api/client";
 
 const OwlReadsTitle = styled.Text`
   color: #fdf5e2;
@@ -26,9 +28,24 @@ export default function HomeScreen() {
     { name: "user", source: require("../assets/user.png"), screen: "Account" },
   ];
 
+  const [quote, setQuote] = useState(null);
+
+  useEffect(() => {
+    async function fetchQuote() {
+      try {
+        const response = await api.get("/api/quotes/random");
+
+        setQuote(response.data);
+      } catch (error) {
+        console.error("Ошибка загрузки цитаты:", error);
+      }
+    }
+    fetchQuote();
+  }, []);
+
   return (
     <View style={{ flex: 1, backgroundColor: "#D7C1AB" }}>
-      <View style={{ flexDirection: "column"}}>
+      <View style={{ flexDirection: "column" }}>
         <OwlReadsTitle>
           OwlReads
         </OwlReadsTitle>
@@ -44,13 +61,15 @@ export default function HomeScreen() {
             zIndex: 1,
           }}
         />
-        <Quote
-          quote_text="Вот мой секрет, он очень прост: зорко одно лишь сердце. Самого главного глазами не увидишь"
-          quote_author="@Маленький принц"
-        />
+        {quote && (
+          <Quote
+            quote_text={quote.text}
+            quote_author={`@${quote.book_title}`}
+          />
+        )}
       </View>
       <NavigationBar icons={icons} />
-      <TabBar color={"#D7C1AB"}/>
+      <TabBar color={"#D7C1AB"} />
     </View>
   );
 }

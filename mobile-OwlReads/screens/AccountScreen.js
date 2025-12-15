@@ -1,11 +1,13 @@
-// screens/AccountScreen.js
-import React, {useState} from "react";
-import { View, Image, ScrollView, TouchableOpacity, TouchableWithoutFeedback } from "react-native";
+import React, { useState, useCallback } from "react";
+import { View, Image, ScrollView, TouchableOpacity, TouchableWithoutFeedback, ActivityIndicator, Alert } from "react-native";
 import styled from "styled-components/native";
-import { useNavigation } from "@react-navigation/native"; 
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import NavigationBar from "../components/Navigation_bar";
 import { TabBar } from "../components/Tab_bar";
+import api from "../src/api/client";
 
+// --- STYLED COMPONENTS (Оставляем как были) ---
 const OwlReadsTitle = styled.Text`
   color: #fdf5e2;
   font-family: "Marck Script-Regular";
@@ -14,7 +16,7 @@ const OwlReadsTitle = styled.Text`
   justify-content: center;
   align-items: center;
   text-align: center;
-  marginTop: 48px;
+  margin-top: 48px;
 `;
 
 const UserContainer = styled.View`
@@ -55,8 +57,6 @@ const MenuText = styled.Text`
 `;
 
 const MenuTextLogout = styled(MenuText)`
-  font-family: "Inter-Regular"; 
-  font-size: 14px; 
   color: #890524;
 `;
 
@@ -66,7 +66,7 @@ const UserName = styled.Text`
   display: flex;
   font-family: "VollkornSC-Bold";
   font-size: 25px;
-  justyfy-content: center;
+  justify-content: center;
   position: relative;
   text-align: center;
   margin-top: -10px;
@@ -74,7 +74,7 @@ const UserName = styled.Text`
 
 const UserEmail = styled.Text`
   align-items: center;
-  aligh-self: stretch;
+  align-self: stretch;
   color: #2F2017;
   display: flex;
   font-family: "Inter-Regular";
@@ -134,7 +134,24 @@ const StyledText = styled.Text`
 
 export default function AccountScreen() {
   const [menuVisible, setMenuVisible] = useState(false);
+  const [loading, setLoading] = useState(true);
   const navigation = useNavigation(); 
+
+  // Состояние для данных пользователя
+  const [userData, setUserData] = useState({
+    username: "Загрузка...",
+    email: "",
+    profile_photo: null
+  });
+
+  // Состояние для статистики
+  const [userStats, setUserStats] = useState({
+    books_in_library: 0,
+    books_read: 0,
+    books_favorites: 0,
+    favorite_author: "-",
+    favorite_genre: "-"
+  });
 
   const icons = [
     { name: "home", source: require("../assets/home.png"), screen: "Home" },
@@ -143,6 +160,64 @@ export default function AccountScreen() {
     { name: "message", source: require("../assets/message.png"), screen: "Chats" },
     { name: "user", source: require("../assets/user_active.png"), screen: "Account" },
   ];
+
+  // Функция выхода
+  const handleLogout = async () => {
+    try {
+      await AsyncStorage.removeItem('userToken');
+      await AsyncStorage.removeItem('userId');
+      setMenuVisible(false);
+      // Переход на экран входа или приветствия (убедись, что имя экрана правильное)
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Start' }], // Или 'Entry'
+      });
+    } catch (e) {
+      console.error("Ошибка выхода:", e);
+    }
+  };
+
+  // Загрузка данных при фокусе экрана
+  useFocusEffect(
+    useCallback(() => {
+      const loadData = async () => {
+        setLoading(true);
+        try {
+          const userId = await AsyncStorage.getItem('userId');
+          if (!userId) {
+            // Если ID нет, значит пользователь не залогинен
+            navigation.navigate("Entry");
+            return;
+          }
+
+          // Параллельный запрос данных пользователя и статистики
+          const [userResponse, statsResponse] = await Promise.all([
+            api.get(`/api/users_personal_data/${userId}/`),
+            api.get(`/api/users_statistics/user/${userId}`)
+          ]);
+
+          setUserData(userResponse.data);
+          setUserStats(statsResponse.data);
+
+        } catch (error) {
+          console.error("Ошибка загрузки профиля:", error);
+          // Alert.alert("Ошибка", "Не удалось загрузить данные профиля");
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      loadData();
+    }, [])
+  );
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: "#D7C1AB", justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="large" color="#890524" />
+      </View>
+    );
+  }
 
   return (
     <TouchableWithoutFeedback onPress={() => menuVisible && setMenuVisible(false)}>
@@ -165,41 +240,43 @@ export default function AccountScreen() {
                 <MenuItem onPress={() => { console.log("Настройка профиля"); setMenuVisible(false); }}>
                   <MenuText>Настройка профиля</MenuText>
                 </MenuItem>
-                 <MenuItem onPress={() => { 
-                  setMenuVisible(false); 
-                  navigation.navigate("Start");
-                }}>
+                 <MenuItem onPress={handleLogout}>
                   <MenuTextLogout>Выйти из аккаунта</MenuTextLogout>
                 </MenuItem>
               </MenuContainer>
             )}
 
+            {/* Логика аватарки: если есть URL с бэка, используем его, иначе дефолт */}
             <Image
-              source={require("../assets/user_icon.png")}
-              style={{ width: 150, height: 150 }}
+              source={
+                userData.profile_photo 
+                  ? { uri: userData.profile_photo } 
+                  : require("../assets/user_icon.png")
+              }
+              style={{ width: 150, height: 150, borderRadius: 75 }} // borderRadius для круглой аватарки
             />
           </UserContainer>
 
           <View style ={{gap: 20}}>
             <View>
-              <UserName>Dana</UserName>
-              <UserEmail>malinetskaya@gmail.com</UserEmail>
+              <UserName>{userData.username}</UserName>
+              <UserEmail>{userData.email}</UserEmail>
             </View>
 
             <StatsContainer>
               <StatItem>
                 <StatLabel>Всего книг</StatLabel>
-                <StatValue>125</StatValue>
+                <StatValue>{userStats.books_in_library || 0}</StatValue>
               </StatItem>
 
               <StatItem>
                 <StatLabel>Прочитано</StatLabel>
-                <StatValue>87</StatValue>
+                <StatValue>{userStats.books_read || 0}</StatValue>
               </StatItem>
 
               <StatItem>
                 <StatLabel>Любимых</StatLabel>
-                <StatValue>12</StatValue>
+                <StatValue>{userStats.books_favorites || 0}</StatValue>
               </StatItem>
             </StatsContainer>
           </View>
@@ -207,19 +284,18 @@ export default function AccountScreen() {
           <View style={{gap: 10, alignItems: "center"}}>
             <TextLabel>Больше всего прочитано книг в жанре</TextLabel>
               <ContainerText>
-                <StyledText>Детектив</StyledText>
+                <StyledText>{userStats.favorite_genre || "-"}</StyledText>
               </ContainerText>
           </View>
 
           <View style={{gap: 10, alignItems: "center"}}>
             <TextLabel>Больше всего прочитано книг автора</TextLabel>
               <ContainerText>
-                <StyledText>Д. Карризи</StyledText>
+                <StyledText>{userStats.favorite_author || "-"}</StyledText>
               </ContainerText>
           </View>
         
         </ScrollView>
-
 
         <NavigationBar icons={icons} />
         <TabBar color={"#D7C1AB"} />

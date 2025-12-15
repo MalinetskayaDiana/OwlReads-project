@@ -8,15 +8,15 @@ from app.crud import users_book_notes as crud
 
 router = APIRouter()
 
-@router.post("/notes/", response_model=UserBookNote, status_code=201)
+@router.post("/", response_model=UserBookNote, status_code=201)
 def create_note(note: UserBookNoteCreate, db: Session = Depends(get_db)):
     return crud.create_note(db, note)
 
-@router.get("/notes/", response_model=List[UserBookNote])
+@router.get("/", response_model=List[UserBookNote])
 def read_notes(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return crud.get_notes(db, skip=skip, limit=limit)
 
-@router.get("/notes/{note_id}/", response_model=UserBookNote)
+@router.get("/{note_id}/", response_model=UserBookNote)
 def read_note(note_id: int, db: Session = Depends(get_db)):
     note = crud.get_note(db, note_id)
     if not note:

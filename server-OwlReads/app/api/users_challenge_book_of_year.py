@@ -8,11 +8,11 @@ from app.crud import users_challenge_book_of_year as crud
 
 router = APIRouter()
 
-@router.post("/book_of_year/", response_model=UserChallengeBookOfYear, status_code=201)
+@router.post("/book_of_year", response_model=UserChallengeBookOfYear, status_code=201)
 def create_entry(entry: UserChallengeBookOfYearCreate, db: Session = Depends(get_db)):
     return crud.create_entry(db, entry)
 
-@router.get("/book_of_year/", response_model=List[UserChallengeBookOfYear])
+@router.get("/book_of_year", response_model=List[UserChallengeBookOfYear])
 def read_entries(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return crud.get_entries(db, skip=skip, limit=limit)
 

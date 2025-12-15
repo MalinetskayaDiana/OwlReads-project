@@ -8,15 +8,15 @@ from app.crud import users_book_review_genres as crud
 
 router = APIRouter()
 
-@router.post("/review_genres/", response_model=UserBookReviewGenre, status_code=201)
+@router.post("/", response_model=UserBookReviewGenre, status_code=201)
 def create_review_genre(entry: UserBookReviewGenreCreate, db: Session = Depends(get_db)):
     return crud.create_review_genre(db, entry)
 
-@router.get("/review_genres/", response_model=List[UserBookReviewGenre])
+@router.get("/", response_model=List[UserBookReviewGenre])
 def read_review_genres(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return crud.get_review_genres(db, skip=skip, limit=limit)
 
-@router.get("/review_genres/{entry_id}/", response_model=UserBookReviewGenre)
+@router.get("/{entry_id}/", response_model=UserBookReviewGenre)
 def read_review_genre(entry_id: int, db: Session = Depends(get_db)):
     entry = crud.get_review_genre(db, entry_id)
     if not entry:

@@ -8,11 +8,11 @@ from app.db.session import get_db
 router = APIRouter()
 
 # --- LiteratureWork ---
-@router.post("/works/", response_model=LiteratureWork)
+@router.post("/works", response_model=LiteratureWork)
 def create_work(work: LiteratureWorkCreate, db: Session = Depends(get_db)):
     return crud.create_literature_work(db, work)
 
-@router.get("/works/", response_model=List[LiteratureWork])
+@router.get("/works", response_model=List[LiteratureWork])
 def read_works(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return crud.get_literature_works(db, skip=skip, limit=limit)
 
@@ -22,11 +22,11 @@ def read_work(work_id: int, db: Session = Depends(get_db)):
 
 
 # --- BookEdition ---
-@router.post("/editions/", response_model=BookEdition)
+@router.post("/editions", response_model=BookEdition)
 def create_edition(edition: BookEditionCreate, db: Session = Depends(get_db)):
     return crud.create_book_edition(db, edition)
 
-@router.get("/editions/", response_model=List[BookEdition])
+@router.get("/editions", response_model=List[BookEdition])
 def read_editions(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return crud.get_book_editions(db, skip=skip, limit=limit)
 

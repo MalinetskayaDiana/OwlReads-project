@@ -25,17 +25,7 @@ export default function ChatsScreen() {
   ];
 
   const chats = [
-    { id: "1", title: "Букля", message: "Последнее сообщение..." },
-    { id: "2", title: "Чат 2", message: "Привет!" },
-    { id: "3", title: "Чат 3", message: "Как дела?" },
-    { id: "4", title: "Чат 4", message: "Новая книга доступна" },
-    { id: "5", title: "Чат 4", message: "Новая книга доступна" },
-    { id: "6", title: "Чат 4", message: "Новая книга доступна" },
-    { id: "7", title: "Чат 4", message: "Новая книга доступна" },
-    { id: "8", title: "Чат 4", message: "Новая книга доступна" },
-    { id: "9", title: "Чат 4", message: "Новая книга доступна" },
-    { id: "10", title: "Чат 4", message: "Новая книга доступна" },
-    { id: "11", title: "Чат 4", message: "Новая книга доступна" },
+   
   ];
 
   return (

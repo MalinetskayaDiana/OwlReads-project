@@ -16,6 +16,11 @@ class UserPersonalData(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     profile_photo = Column(String(255), nullable=True)
 
+    # --- НОВЫЕ ПОЛЯ ---
+    verification_code = Column(String(6), nullable=True)
+    is_verified = Column(Boolean, default=False)
+    # ------------------
+
     # обратные связи
     statistics = relationship("UserStatistics", back_populates="user", uselist=False)
     challenges = relationship("UserChallenge", back_populates="user")

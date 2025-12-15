@@ -13,7 +13,7 @@ class LiteratureWork(LiteratureWorkBase):
     id: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 # --- BookEdition ---
@@ -35,4 +35,4 @@ class BookEdition(BookEditionBase):
     literature_work_id: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True

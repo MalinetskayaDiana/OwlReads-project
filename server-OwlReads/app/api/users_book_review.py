@@ -9,11 +9,11 @@ from app.crud import users_book_review as crud
 
 router = APIRouter()
 
-@router.post("/reviews/", response_model=UserBookReview, status_code=201)
+@router.post("/reviews", response_model=UserBookReview, status_code=201)
 def create_review(review: UserBookReviewCreate, db: Session = Depends(get_db)):
     return crud.create_review(db, review)
 
-@router.get("/reviews/", response_model=List[UserBookReview])
+@router.get("/reviews", response_model=List[UserBookReview])
 def read_reviews(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return crud.get_reviews(db, skip=skip, limit=limit)
 
@@ -24,7 +24,7 @@ def read_review(review_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Review not found")
     return review
 
-@router.get("/users/{user_id}/reviews/by_category/", response_model=List[UserBookReview])
+@router.get("/users/{user_id}/reviews/by_category", response_model=List[UserBookReview])
 def read_user_reviews_by_category(
     user_id: int,
     category_name: str = Query(..., description="Название категории, например: Прочитано"),

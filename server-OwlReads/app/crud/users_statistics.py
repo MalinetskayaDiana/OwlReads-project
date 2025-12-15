@@ -14,3 +14,6 @@ def get_statistics(db: Session, skip: int = 0, limit: int = 100):
 
 def get_statistics_by_id(db: Session, stats_id: int):
     return db.query(UserStatistics).filter(UserStatistics.id == stats_id).first()
+
+def get_statistics_by_user_id(db: Session, user_id: int):
+    return db.query(UserStatistics).filter(UserStatistics.user_id == user_id).first()

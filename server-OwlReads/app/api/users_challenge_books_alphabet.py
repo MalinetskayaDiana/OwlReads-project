@@ -8,11 +8,11 @@ from app.crud import users_challenge_books_alphabet as crud
 
 router = APIRouter()
 
-@router.post("/alphabet/", response_model=UserChallengeBooksAlphabet, status_code=201)
+@router.post("/alphabet", response_model=UserChallengeBooksAlphabet, status_code=201)
 def create_alphabet_entry(entry: UserChallengeBooksAlphabetCreate, db: Session = Depends(get_db)):
     return crud.create_alphabet_entry(db, entry)
 
-@router.get("/alphabet/", response_model=List[UserChallengeBooksAlphabet])
+@router.get("/alphabet", response_model=List[UserChallengeBooksAlphabet])
 def read_alphabet_entries(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return crud.get_alphabet_entries(db, skip=skip, limit=limit)
 
