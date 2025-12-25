@@ -17,6 +17,7 @@ const StyledInput = styled.TextInput`
   font-family: Inter-Regular;
   font-size: 15px;
   color: #2F2017;
+  width: 100%; /* Чтобы текст занимал всю ширину контейнера */
 `;
 
 const ErrorText = styled.Text`
@@ -26,26 +27,23 @@ const ErrorText = styled.Text`
   font-size: 12px;
 `;
 
-const InputField = ({
-  value,
-  onChangeText,
-  placeholder,
-  error,
-  secureTextEntry, // <--- Добавить
-  keyboardType,    // <--- Добавить (для email и цифр)
-  autoCapitalize   // <--- Добавить (чтобы email не был с большой буквы)
+const InputField = ({ 
+  value, 
+  onChangeText, 
+  placeholder, 
+  error, 
+  style,
+  ...props // <--- 1. Собираем все остальные пропсы (onSubmitEditing, keyboardType и т.д.)
 }) => {
   return (
-    <Wrapper>
+    <Wrapper style={style}>
       <Container>
         <StyledInput
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
           placeholderTextColor="rgba(47, 32, 23, 0.3)"
-          secureTextEntry={secureTextEntry} // <--- Использовать
-          keyboardType={keyboardType}       // <--- Использовать
-          autoCapitalize={autoCapitalize}   // <--- Использовать
+          {...props} // <--- 2. Передаем их в TextInput
         />
       </Container>
       {error ? <ErrorText>{error}</ErrorText> : null}

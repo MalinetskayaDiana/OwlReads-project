@@ -22,3 +22,10 @@ def read_quote(quote_id: int, db: Session = Depends(get_db)):
     if not quote:
         raise HTTPException(status_code=404, detail="Quote not found")
     return quote
+
+@router.delete("/{quote_id}/", status_code=204)
+def delete_quote(quote_id: int, db: Session = Depends(get_db)):
+    success = crud.delete_quote(db, quote_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    return None

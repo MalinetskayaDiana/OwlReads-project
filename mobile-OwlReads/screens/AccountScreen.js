@@ -1,13 +1,16 @@
 import React, { useState, useCallback } from "react";
-import { View, Image, ScrollView, TouchableOpacity, TouchableWithoutFeedback, ActivityIndicator, Alert } from "react-native";
+import { View, Image, ScrollView, TouchableOpacity, TouchableWithoutFeedback, ActivityIndicator } from "react-native";
 import styled from "styled-components/native";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Импорты компонентов
 import NavigationBar from "../components/Navigation_bar";
 import { TabBar } from "../components/Tab_bar";
+import AddBookModal from "../components/Add_book_modal"; 
 import api from "../src/api/client";
 
-// --- STYLED COMPONENTS (Оставляем как были) ---
+// --- STYLED COMPONENTS (Без изменений) ---
 const OwlReadsTitle = styled.Text`
   color: #fdf5e2;
   font-family: "Marck Script-Regular";
@@ -133,18 +136,18 @@ const StyledText = styled.Text`
 `;
 
 export default function AccountScreen() {
-  const [menuVisible, setMenuVisible] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false); // Меню профиля (три точки)
+  const [isAddBookModalVisible, setAddBookModalVisible] = useState(false); // <--- 2. Состояние для меню добавления
+  
   const [loading, setLoading] = useState(true);
   const navigation = useNavigation(); 
 
-  // Состояние для данных пользователя
   const [userData, setUserData] = useState({
     username: "Загрузка...",
     email: "",
     profile_photo: null
   });
 
-  // Состояние для статистики
   const [userStats, setUserStats] = useState({
     books_in_library: 0,
     books_read: 0,
@@ -156,28 +159,47 @@ export default function AccountScreen() {
   const icons = [
     { name: "home", source: require("../assets/home.png"), screen: "Home" },
     { name: "open_book", source: require("../assets/open_book.png"), screen: "Library" },
-    { name: "add_book", source: require("../assets/add_book.png"), screen: "Library" },
+    { name: "add_book", source: require("../assets/add_book.png"), screen: "AddBookModal" }, // screen указывает на модалку
     { name: "message", source: require("../assets/message.png"), screen: "Chats" },
     { name: "user", source: require("../assets/user_active.png"), screen: "Account" },
   ];
 
-  // Функция выхода
+  // --- 3. Обработчик навигации (перехватчик) ---
+  const handleNavigationPress = (screenName) => {
+    if (screenName === "AddBookModal") {
+      setAddBookModalVisible(true); // Открываем меню добавления
+    } else {
+      navigation.navigate(screenName);
+    }
+  };
+
+  // Заглушки для действий в меню добавления
+  const handleSearchBook = () => {
+    setAddBookModalVisible(false);
+    console.log("Переход к поиску");
+    // navigation.navigate("SearchBook");
+  };
+
+  const handleAddManual = () => {
+    setAddBookModalVisible(false);
+    console.log("Переход к добавлению");
+    // navigation.navigate("AddBookManual");
+  };
+
   const handleLogout = async () => {
     try {
       await AsyncStorage.removeItem('userToken');
       await AsyncStorage.removeItem('userId');
       setMenuVisible(false);
-      // Переход на экран входа или приветствия (убедись, что имя экрана правильное)
       navigation.reset({
         index: 0,
-        routes: [{ name: 'Start' }], // Или 'Entry'
+        routes: [{ name: 'Start' }],
       });
     } catch (e) {
       console.error("Ошибка выхода:", e);
     }
   };
 
-  // Загрузка данных при фокусе экрана
   useFocusEffect(
     useCallback(() => {
       const loadData = async () => {
@@ -185,28 +207,21 @@ export default function AccountScreen() {
         try {
           const userId = await AsyncStorage.getItem('userId');
           if (!userId) {
-            // Если ID нет, значит пользователь не залогинен
             navigation.navigate("Entry");
             return;
           }
-
-          // Параллельный запрос данных пользователя и статистики
           const [userResponse, statsResponse] = await Promise.all([
             api.get(`/api/users_personal_data/${userId}/`),
             api.get(`/api/users_statistics/user/${userId}`)
           ]);
-
           setUserData(userResponse.data);
           setUserStats(statsResponse.data);
-
         } catch (error) {
           console.error("Ошибка загрузки профиля:", error);
-          // Alert.alert("Ошибка", "Не удалось загрузить данные профиля");
         } finally {
           setLoading(false);
         }
       };
-
       loadData();
     }, [])
   );
@@ -246,14 +261,13 @@ export default function AccountScreen() {
               </MenuContainer>
             )}
 
-            {/* Логика аватарки: если есть URL с бэка, используем его, иначе дефолт */}
             <Image
               source={
                 userData.profile_photo 
                   ? { uri: userData.profile_photo } 
                   : require("../assets/user_icon.png")
               }
-              style={{ width: 150, height: 150, borderRadius: 75 }} // borderRadius для круглой аватарки
+              style={{ width: 150, height: 150, borderRadius: 75 }}
             />
           </UserContainer>
 
@@ -297,8 +311,19 @@ export default function AccountScreen() {
         
         </ScrollView>
 
-        <NavigationBar icons={icons} />
-        <TabBar color={"#D7C1AB"} />
+        {/* 4. Передаем перехватчик в NavigationBar */}
+        <NavigationBar icons={icons} onPressOverride={handleNavigationPress} />
+        
+        {/* 5. Скрываем TabBar, если открыто меню добавления */}
+        {!isAddBookModalVisible && <TabBar color={"#D7C1AB"} />}
+
+        {/* 6. Само модальное окно */}
+        <AddBookModal 
+          visible={isAddBookModalVisible}
+          onClose={() => setAddBookModalVisible(false)}
+          onSearch={handleSearchBook}
+          onAdd={handleAddManual}
+        />
       </View>
     </TouchableWithoutFeedback>
   );

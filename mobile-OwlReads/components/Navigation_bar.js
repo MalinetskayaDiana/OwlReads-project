@@ -24,14 +24,23 @@ const NavigationContainer = styled.View`
   right: 0;
 `;
 
-export default function NavigationBar({ icons }) {
+export default function NavigationBar({ icons, onPressOverride }) {
   const navigation = useNavigation();
 
   return (
     <NavigationContainer>
       {icons.map((icon, index) => (
-        <TouchableOpacity key={index}
-        onPress={() => navigation.navigate(icon.screen)}>
+        <TouchableOpacity
+          key={index}
+          onPress={() => {
+            if (onPressOverride) {
+              onPressOverride(icon.screen);
+            } else {
+              navigation.navigate(icon.screen);
+            }
+          }}
+        >
+
           <Image
             source={icon.source}
             style={{

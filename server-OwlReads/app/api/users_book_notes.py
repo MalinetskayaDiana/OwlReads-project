@@ -22,3 +22,10 @@ def read_note(note_id: int, db: Session = Depends(get_db)):
     if not note:
         raise HTTPException(status_code=404, detail="Note not found")
     return note
+
+@router.delete("/{note_id}/", status_code=204)
+def delete_note(note_id: int, db: Session = Depends(get_db)):
+    success = crud.delete_note(db, note_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Note not found")
+    return None

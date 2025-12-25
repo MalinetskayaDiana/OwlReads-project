@@ -10,10 +10,11 @@ class UserBookRatingBase(BaseModel):
     easy_reading_rating: int | None = None
 
 class UserBookRatingCreate(UserBookRatingBase):
-    pass
+    review_id: int
 
 class UserBookRating(UserBookRatingBase):
     id: int
+    review_id: int
 
     class Config:
         from_attributes = True

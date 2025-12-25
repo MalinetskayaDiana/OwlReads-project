@@ -4,6 +4,7 @@ from typing import List
 from app.schemas.literature import LiteratureWork, LiteratureWorkCreate, BookEdition, BookEditionCreate
 from app.crud import literature as crud
 from app.db.session import get_db
+from app.schemas.literature import BookSearchResponse
 
 router = APIRouter()
 
@@ -33,3 +34,23 @@ def read_editions(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)
 @router.get("/editions/{edition_id}", response_model=BookEdition)
 def read_edition(edition_id: int, db: Session = Depends(get_db)):
     return crud.get_book_edition(db, edition_id)
+
+@router.get("/search", response_model=List[BookSearchResponse])
+def search_books_endpoint(q: str, db: Session = Depends(get_db)):
+    if not q:
+        return []
+
+    books = crud.search_books(db, query=q)
+
+    # Преобразуем ORM модели в Pydantic схему вручную или автоматически
+    results = []
+    for book in books:
+        results.append(BookSearchResponse(
+            id=book.id,
+            title=book.work.title,  # Берем название из связанной таблицы
+            author=book.work.author,  # Берем автора из связанной таблицы
+            cover_url=book.cover_url,
+            year=book.year,
+            source="local"
+        ))
+    return results

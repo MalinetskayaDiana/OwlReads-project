@@ -1,0 +1,423 @@
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\books_categories.py =====
+
+from pydantic import BaseModel
+
+class BookCategoryBase(BaseModel):
+    name: str
+
+class BookCategoryCreate(BookCategoryBase):
+    pass
+
+class BookCategory(BookCategoryBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\custom_book.py =====
+
+from pydantic import BaseModel
+from typing import Optional
+
+class BookManualCreate(BaseModel):
+    title: str
+    author: str
+    pages: Optional[int] = None
+    year: Optional[int] = None
+    language: Optional[str] = None
+    description: Optional[str] = None
+    cover_url: Optional[str] = None
+    category_name: str  # Например: "Читаю", "Прочитано"
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\genre.py =====
+
+# app/schemas/genre.py
+from pydantic import BaseModel
+
+class GenreBase(BaseModel):
+    name: str
+
+class GenreCreate(GenreBase):
+    pass
+
+class GenreRead(GenreBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\literature.py =====
+
+from pydantic import BaseModel
+from typing import Optional, List
+
+# --- LiteratureWork ---
+class LiteratureWorkBase(BaseModel):
+    title: str
+    author: str
+
+class LiteratureWorkCreate(LiteratureWorkBase):
+    pass
+
+class LiteratureWork(LiteratureWorkBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+# --- BookEdition ---
+class BookEditionBase(BaseModel):
+    original_year: Optional[int] = None
+    description: Optional[str] = None
+    publisher: Optional[str] = None
+    year: Optional[int] = None
+    pages: Optional[int] = None
+    cover_url: Optional[str] = None
+    isbn: Optional[str] = None
+    language: Optional[str] = None
+
+class BookEditionCreate(BookEditionBase):
+    literature_work_id: int
+
+class BookEdition(BookEditionBase):
+    id: int
+    literature_work_id: int
+
+    class Config:
+        from_attributes = True
+
+class BookSearchResponse(BaseModel):
+    id: int
+    title: str
+    author: str
+    cover_url: Optional[str] = None
+    year: Optional[int] = None
+
+    # Поле, чтобы фронт понимал, что это книга из нашей БД
+    source: str = "local"
+
+    class Config:
+        from_attributes = True
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\popular_quotes.py =====
+
+# app/schemas/popular_quotes.py
+from pydantic import BaseModel
+
+class PopularQuoteBase(BaseModel):
+    text: str
+    book_title: str
+
+class PopularQuoteCreate(PopularQuoteBase):
+    pass
+
+class PopularQuote(PopularQuoteBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_book_notes.py =====
+
+from pydantic import BaseModel
+from datetime import datetime
+
+class UserBookNoteBase(BaseModel):
+    text: str
+
+class UserBookNoteCreate(UserBookNoteBase):
+    pass
+
+class UserBookNote(UserBookNoteBase):
+    id: int
+    date: datetime
+
+    class Config:
+        from_attributes = True
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_book_quotes.py =====
+
+from pydantic import BaseModel
+from datetime import datetime
+
+class UserBookQuoteBase(BaseModel):
+    text: str
+    quote_author: str | None = None
+
+class UserBookQuoteCreate(UserBookQuoteBase):
+    pass
+
+class UserBookQuote(UserBookQuoteBase):
+    id: int
+    date: datetime
+
+    class Config:
+        from_attributes = True
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_book_rating.py =====
+
+from pydantic import BaseModel
+
+class UserBookRatingBase(BaseModel):
+    total_rating: int
+    characters_rating: int | None = None
+    plot_rating: int | None = None
+    relations_rating: int | None = None
+    emotionality_rating: int | None = None
+    ending_rating: int | None = None
+    easy_reading_rating: int | None = None
+
+class UserBookRatingCreate(UserBookRatingBase):
+    pass
+
+class UserBookRating(UserBookRatingBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_book_review.py =====
+
+# app/schemas/users_book_review.py
+from typing import List, Optional
+from pydantic import BaseModel
+from .books_categories import BookCategory
+from .users_book_rating import UserBookRating
+from .users_book_quotes import UserBookQuote
+from .users_book_notes import UserBookNote
+from .genre import GenreRead
+
+class UserBookReviewBase(BaseModel):
+    user_id: int
+    book_id: int
+    category_id: int
+
+class UserBookReviewCreate(UserBookReviewBase):
+    pass
+
+class UserBookReview(UserBookReviewBase):
+    id: int
+    category: BookCategory
+    rating: Optional[UserBookRating] = None
+    quotes: List[UserBookQuote] = []
+    notes: List[UserBookNote] = []
+
+    class Config:
+        from_attributes = True
+
+class LibraryBookRead(BaseModel):
+    review_id: int
+    book_id: int
+    title: str
+    author: str
+    cover_url: Optional[str] = None
+    category_name: str
+    category_color: str = "#AB66FF" # Можно хранить в БД, но пока захардкодим или вычислим
+    rating: int = 0
+
+    class Config:
+        from_attributes = True
+
+
+class BookReviewDetail(BaseModel):
+    review_id: int
+    book_id: int
+
+    # Данные книги
+    title: str
+    author: str
+    pages: Optional[int]
+    year: Optional[int]
+    description: Optional[str]
+    cover_url: Optional[str]
+
+    # Данные отзыва
+    category_name: str
+
+    # Вложенные данные
+    rating: Optional[UserBookRating]
+    quotes: List[UserBookQuote] = []
+    notes: List[UserBookNote] = []
+    genres: List[GenreRead] = []  # Жанры нужно будет достать отдельно
+
+    class Config:
+        from_attributes = True
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_book_review_genres.py =====
+
+from pydantic import BaseModel
+
+class UserBookReviewGenreBase(BaseModel):
+    review_id: int
+    genre_id: int
+
+class UserBookReviewGenreCreate(UserBookReviewGenreBase):
+    pass
+
+class UserBookReviewGenre(UserBookReviewGenreBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_challenges.py =====
+
+from pydantic import BaseModel
+from datetime import datetime
+
+class UserChallengeBase(BaseModel):
+    challenge_type: str
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    status: str = "В процессе"
+
+class UserChallengeCreate(UserChallengeBase):
+    pass
+
+class UserChallenge(UserChallengeBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_challenge_books_alphabet.py =====
+
+from pydantic import BaseModel
+
+class UserChallengeBooksAlphabetBase(BaseModel):
+    letter: str
+
+class UserChallengeBooksAlphabetCreate(UserChallengeBooksAlphabetBase):
+    pass
+
+class UserChallengeBooksAlphabet(UserChallengeBooksAlphabetBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_challenge_book_of_year.py =====
+
+from pydantic import BaseModel
+
+class UserChallengeBookOfYearBase(BaseModel):
+    month: int | None = None
+    stage: str
+    is_winner: bool = False
+
+class UserChallengeBookOfYearCreate(UserChallengeBookOfYearBase):
+    pass
+
+class UserChallengeBookOfYear(UserChallengeBookOfYearBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_personal_data.py =====
+
+from pydantic import BaseModel, EmailStr
+from datetime import datetime
+
+class UserPersonalDataBase(BaseModel):
+    username: str
+    email: EmailStr
+    password_hash: str
+    agreement_accepted: bool = False
+    profile_photo: str | None = None
+
+class UserPersonalDataCreate(UserPersonalDataBase):
+    pass
+
+class UserVerifyEmail(BaseModel):
+    email: EmailStr
+    code: str
+
+class UserPersonalData(UserPersonalDataBase):
+    id: int
+    registered_at: datetime
+    updated_at: datetime
+    is_verified: bool
+
+    class Config:
+        from_attributes = True
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_reading_records.py =====
+
+from pydantic import BaseModel
+from datetime import date
+
+class UserReadingRecordBase(BaseModel):
+    start_date: date | None = None
+    end_date: date | None = None
+    result: str
+    comment: str | None = None
+
+class UserReadingRecordCreate(UserReadingRecordBase):
+    pass
+
+class UserReadingRecord(UserReadingRecordBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_statistics.py =====
+
+from pydantic import BaseModel
+
+class UserStatisticsBase(BaseModel):
+    books_in_library: int = 0
+    books_read: int = 0
+    books_favorites: int = 0
+    favorite_author: str | None = None
+    favorite_genre: str | None = None
+
+class UserStatisticsCreate(UserStatisticsBase):
+    pass
+
+class UserStatistics(UserStatisticsBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_top_characters.py =====
+
+from pydantic import BaseModel
+
+class UserTopCharactersBase(BaseModel):
+    top_1: str | None = None
+    top_2: str | None = None
+    top_3: str | None = None
+    top_4: str | None = None
+    top_5: str | None = None
+
+class UserTopCharactersCreate(UserTopCharactersBase):
+    pass
+
+class UserTopCharacters(UserTopCharactersBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\__init__.py =====
+
+from .popular_quotes import PopularQuoteBase

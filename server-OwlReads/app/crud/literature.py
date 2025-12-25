@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from app.models.literature_works import LiteratureWork
 from app.models.books_editions import BookEdition
 from app.schemas.literature import LiteratureWorkCreate, BookEditionCreate
+from sqlalchemy import or_
 
 # --- LiteratureWork ---
 def create_literature_work(db: Session, work: LiteratureWorkCreate):
@@ -31,3 +32,19 @@ def get_book_edition(db: Session, edition_id: int):
 
 def get_book_editions(db: Session, skip: int = 0, limit: int = 100):
     return db.query(BookEdition).offset(skip).limit(limit).all()
+
+def search_books(db: Session, query: str, limit: int = 10):
+    search_term = f"%{query}%"
+
+    return (
+        db.query(BookEdition)
+        .join(LiteratureWork)
+        .filter(
+            or_(
+                LiteratureWork.title.ilike(search_term),
+                LiteratureWork.author.ilike(search_term)
+            )
+        )
+        .limit(limit)
+        .all()
+    )

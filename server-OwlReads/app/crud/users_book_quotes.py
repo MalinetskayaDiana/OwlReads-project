@@ -14,3 +14,11 @@ def get_quotes(db: Session, skip: int = 0, limit: int = 100):
 
 def get_quote(db: Session, quote_id: int):
     return db.query(UserBookQuote).filter(UserBookQuote.id == quote_id).first()
+
+def delete_quote(db: Session, quote_id: int):
+    obj = db.query(UserBookQuote).filter(UserBookQuote.id == quote_id).first()
+    if obj:
+        db.delete(obj)
+        db.commit()
+        return True
+    return False

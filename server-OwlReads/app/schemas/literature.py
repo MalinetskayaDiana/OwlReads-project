@@ -36,3 +36,16 @@ class BookEdition(BookEditionBase):
 
     class Config:
         from_attributes = True
+
+class BookSearchResponse(BaseModel):
+    id: int
+    title: str
+    author: str
+    cover_url: Optional[str] = None
+    year: Optional[int] = None
+
+    # Поле, чтобы фронт понимал, что это книга из нашей БД
+    source: str = "local"
+
+    class Config:
+        from_attributes = True

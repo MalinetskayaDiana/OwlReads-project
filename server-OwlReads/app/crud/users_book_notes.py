@@ -14,3 +14,11 @@ def get_notes(db: Session, skip: int = 0, limit: int = 100):
 
 def get_note(db: Session, note_id: int):
     return db.query(UserBookNote).filter(UserBookNote.id == note_id).first()
+
+def delete_note(db: Session, note_id: int):
+    obj = db.query(UserBookNote).filter(UserBookNote.id == note_id).first()
+    if obj:
+        db.delete(obj)
+        db.commit()
+        return True
+    return False
