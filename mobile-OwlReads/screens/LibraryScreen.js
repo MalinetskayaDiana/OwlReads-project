@@ -137,7 +137,7 @@ export default function LibraryScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: "#D7C1AB" }}>
-      <View style={{ flexDirection: "column", flex: 1 }}> {/* flex: 1 важно для FlatList */}
+      <View style={{ flexDirection: "column", flex: 1 }}>
         <OwlReadsTitle>OwlReads</OwlReadsTitle>
         <Separator />
         
@@ -146,10 +146,9 @@ export default function LibraryScreen() {
         ) : (
           <FlatList
             data={books}
-            keyExtractor={(item) => String(item.review_id)} // Используем ID отзыва как ключ
+            keyExtractor={(item) => String(item.review_id)}
             renderItem={({ item }) => (
               <BookCard
-                // Если cover_url есть - используем uri, иначе - локальную заглушку
                 cover={item.cover_url ? { uri: item.cover_url } : require("../assets/cover.png")}
                 category={item.category_name}
                 categorycolor={item.category_color}
@@ -195,7 +194,7 @@ export default function LibraryScreen() {
               />
 
               <View style={{ alignSelf: 'center' }}>
-                <TextBox text={selectedBook.category_name} color={item.category_color} />
+                <TextBox text={selectedBook.category_name} color={selectedBook.category_color} />
               </View>
 
               <OverlayTitle>{selectedBook.title}</OverlayTitle>
