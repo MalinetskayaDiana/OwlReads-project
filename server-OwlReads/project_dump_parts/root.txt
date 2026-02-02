@@ -78,7 +78,6 @@ for root, dirs, files in os.walk(project_root):
                 except Exception as e:
                     out.write(f"[Ошибка чтения файла: {e}]")
 
-
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\README.md =====
 
 ## просмотр текущей миграции

@@ -122,45 +122,46 @@ class PopularQuote(PopularQuoteBase):
     class Config:
         from_attributes = True
 
-
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_book_notes.py =====
 
 from pydantic import BaseModel
 from datetime import datetime
+from typing import Optional
 
 class UserBookNoteBase(BaseModel):
     text: str
 
 class UserBookNoteCreate(UserBookNoteBase):
-    pass
+    review_id: int
 
 class UserBookNote(UserBookNoteBase):
     id: int
-    date: datetime
+    review_id: int
+    date: Optional[datetime] = None
 
     class Config:
         from_attributes = True
-
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_book_quotes.py =====
 
 from pydantic import BaseModel
 from datetime import datetime
+from typing import Optional
 
 class UserBookQuoteBase(BaseModel):
     text: str
-    quote_author: str | None = None
+    quote_author: Optional[str] = None
 
 class UserBookQuoteCreate(UserBookQuoteBase):
-    pass
+    review_id: int
 
 class UserBookQuote(UserBookQuoteBase):
     id: int
-    date: datetime
+    review_id: int  # И здесь полезно
+    date: Optional[datetime] = None
 
     class Config:
         from_attributes = True
-
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_book_rating.py =====
 
@@ -176,10 +177,11 @@ class UserBookRatingBase(BaseModel):
     easy_reading_rating: int | None = None
 
 class UserBookRatingCreate(UserBookRatingBase):
-    pass
+    review_id: int
 
 class UserBookRating(UserBookRatingBase):
     id: int
+    review_id: int
 
     class Config:
         from_attributes = True
@@ -187,9 +189,10 @@ class UserBookRating(UserBookRatingBase):
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_book_review.py =====
 
-# app/schemas/users_book_review.py
 from typing import List, Optional
 from pydantic import BaseModel
+
+# Импортируем другие схемы (обратите внимание на точки перед названиями файлов)
 from .books_categories import BookCategory
 from .users_book_rating import UserBookRating
 from .users_book_quotes import UserBookQuote
@@ -221,12 +224,11 @@ class LibraryBookRead(BaseModel):
     author: str
     cover_url: Optional[str] = None
     category_name: str
-    category_color: str = "#AB66FF" # Можно хранить в БД, но пока захардкодим или вычислим
+    category_color: str = "#AB66FF"
     rating: int = 0
 
     class Config:
         from_attributes = True
-
 
 class BookReviewDetail(BaseModel):
     review_id: int
@@ -235,22 +237,28 @@ class BookReviewDetail(BaseModel):
     # Данные книги
     title: str
     author: str
-    pages: Optional[int]
-    year: Optional[int]
-    description: Optional[str]
-    cover_url: Optional[str]
+    pages: Optional[int] = None
+    year: Optional[int] = None
+    description: Optional[str] = None
+    cover_url: Optional[str] = None
 
     # Данные отзыва
     category_name: str
 
     # Вложенные данные
-    rating: Optional[UserBookRating]
+    rating: Optional[UserBookRating] = None
     quotes: List[UserBookQuote] = []
     notes: List[UserBookNote] = []
-    genres: List[GenreRead] = []  # Жанры нужно будет достать отдельно
+    genres: List[GenreRead] = []
 
     class Config:
         from_attributes = True
+
+class UserBookReviewUpdateCategory(BaseModel):
+    category_name: str
+
+class UserBookReviewUpdateGenres(BaseModel):
+    genres: List[str]  # Список названий, например ["Фэнтези", "Роман"]
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_book_review_genres.py =====
 
@@ -420,4 +428,3 @@ class UserTopCharacters(UserTopCharactersBase):
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\__init__.py =====
 
-from .popular_quotes import PopularQuoteBase

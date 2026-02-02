@@ -1245,6 +1245,12 @@ def read_note(note_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Note not found")
     return note
 
+@router.delete("/{note_id}/", status_code=204)
+def delete_note(note_id: int, db: Session = Depends(get_db)):
+    success = crud.delete_note(db, note_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Note not found")
+    return None
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\users_book_quotes.py =====
 
@@ -1273,6 +1279,12 @@ def read_quote(quote_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Quote not found")
     return quote
 
+@router.delete("/{quote_id}/", status_code=204)
+def delete_quote(quote_id: int, db: Session = Depends(get_db)):
+    success = crud.delete_quote(db, quote_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    return None
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\users_book_rating.py =====
 
@@ -1305,27 +1317,31 @@ def read_rating(rating_id: int, db: Session = Depends(get_db)):
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\users_book_review.py =====
 
 # app/api/users_book_review.py
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List
 
 from app.db.session import get_db
-from app.schemas.users_book_review import UserBookReview, UserBookReviewCreate, LibraryBookRead
+from app.schemas.users_book_review import UserBookReview, UserBookReviewCreate, LibraryBookRead, BookReviewDetail, UserBookReviewUpdateCategory, UserBookReviewUpdateGenres
 from app.crud import users_book_review as crud
-
 from app.schemas.custom_book import BookManualCreate
-from app.schemas.users_book_review import BookReviewDetail
-from app.schemas.genre import GenreRead
+
+# Настройка логгера для отладки ошибок 500
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
 
 @router.post("/reviews", response_model=UserBookReview, status_code=201)
 def create_review(review: UserBookReviewCreate, db: Session = Depends(get_db)):
     return crud.create_review(db, review)
 
+
 @router.get("/reviews", response_model=List[UserBookReview])
 def read_reviews(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return crud.get_reviews(db, skip=skip, limit=limit)
+
 
 @router.get("/reviews/{review_id}/", response_model=UserBookReview)
 def read_review(review_id: int, db: Session = Depends(get_db)):
@@ -1334,14 +1350,35 @@ def read_review(review_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Review not found")
     return review
 
+
 @router.get("/users/{user_id}/reviews/by_category", response_model=List[UserBookReview])
 def read_user_reviews_by_category(
-    user_id: int,
-    category_name: str = Query(..., description="Название категории, например: Прочитано"),
-    db: Session = Depends(get_db),
+        user_id: int,
+        category_name: str = Query(..., description="Название категории, например: Прочитано"),
+        db: Session = Depends(get_db),
 ):
     results = crud.get_user_reviews_by_category_name(db, user_id, category_name)
     return results
+
+@router.patch("/reviews/{review_id}/category", response_model=UserBookReview)
+def update_category(
+    review_id: int,
+    update_data: UserBookReviewUpdateCategory,
+    db: Session = Depends(get_db)
+):
+    review = crud.update_review_category(db, review_id, update_data.category_name)
+    if not review:
+        raise HTTPException(status_code=404, detail="Review or Category not found")
+    return review
+
+@router.put("/reviews/{review_id}/genres")
+def update_genres(
+    review_id: int,
+    update_data: UserBookReviewUpdateGenres,
+    db: Session = Depends(get_db)
+):
+    crud.update_review_genres(db, review_id, update_data.genres)
+    return {"message": "Genres updated successfully"}
 
 @router.delete("/reviews/{review_id}/", status_code=204)
 def delete_review(review_id: int, db: Session = Depends(get_db)):
@@ -1404,28 +1441,53 @@ def read_user_library(user_id: int, skip: int = 0, limit: int = 100, db: Session
 
 @router.get("/{review_id}", response_model=BookReviewDetail)
 def read_review_detail(review_id: int, db: Session = Depends(get_db)):
-    review = crud.get_review_detail(db, review_id)
-    if not review:
-        raise HTTPException(status_code=404, detail="Review not found")
+    try:
+        review = crud.get_review_detail(db, review_id)
+        if not review:
+            raise HTTPException(status_code=404, detail="Review not found")
 
-    # Собираем жанры из связующей таблицы
-    genres_list = [g.genre for g in review.genres] if review.genres else []
+        # Безопасное получение данных книги
+        if not review.book:
+            print(f"ERROR: Review {review_id} has no book associated!")
+            raise HTTPException(status_code=500, detail="Data integrity error: Book missing")
 
-    return BookReviewDetail(
-        review_id=review.id,
-        book_id=review.book.id,
-        title=review.book.work.title,
-        author=review.book.work.author,
-        pages=review.book.pages,
-        year=review.book.year,
-        description=review.book.description,
-        cover_url=review.book.cover_url,
-        category_name=review.category.name,
-        rating=review.rating,
-        quotes=review.quotes,
-        notes=review.notes,
-        genres=genres_list  # Pydantic сам преобразует в GenreRead
-    )
+        if not review.book.work:
+            print(f"ERROR: Book {review.book.id} has no LiteratureWork associated!")
+            # Можно вернуть заглушку или ошибку
+            work_title = "Unknown Title"
+            work_author = "Unknown Author"
+        else:
+            work_title = review.book.work.title
+            work_author = review.book.work.author
+
+        # Собираем жанры из связующей таблицы
+        # Проверяем, что review.genres не None
+        genres_list = []
+        if review.genres:
+            for g in review.genres:
+                if g.genre:
+                    genres_list.append(g.genre)
+
+        return BookReviewDetail(
+            review_id=review.id,
+            book_id=review.book.id,
+            title=work_title,
+            author=work_author,
+            pages=review.book.pages,
+            year=review.book.year,
+            description=review.book.description,
+            cover_url=review.book.cover_url,
+            category_name=review.category.name if review.category else "Без категории",
+            rating=review.rating,  # Pydantic сам обработает None
+            quotes=review.quotes if review.quotes else [],
+            notes=review.notes if review.notes else [],
+            genres=genres_list
+        )
+    except Exception as e:
+        # Логируем ошибку в консоль сервера, чтобы видеть причину 500
+        logger.error(f"Error fetching review detail {review_id}: {str(e)}", exc_info=True)
+        # Пробрасываем ошибку дальше, чтобы фронт получил 500
+        raise e
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\users_book_review_genres.py =====
 
@@ -1615,43 +1677,104 @@ def read_record(record_id: int, db: Session = Depends(get_db)):
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\users_statistics.py =====
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session, joinedload
 from typing import List
+from collections import Counter
 
 from app.db.session import get_db
-from app.schemas.users_statistics import UserStatistics, UserStatisticsCreate
-from app.crud import users_statistics as crud
+from app.schemas.users_statistics import UserStatistics
+from app.models.users_book_review import UserBookReview
+from app.models.books_editions import BookEdition
+from app.models.literature_works import LiteratureWork
+from app.models.users_book_review_genres import UserBookReviewGenre
+from app.models.genre import Genre
+from app.models.books_categories import BookCategory
 
 router = APIRouter()
 
-@router.post("/", response_model=UserStatistics, status_code=201)
-def create_statistics(stats: UserStatisticsCreate, db: Session = Depends(get_db)):
-    return crud.create_statistics(db, stats)
-
-@router.get("/", response_model=List[UserStatistics])
-def read_statistics(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    return crud.get_statistics(db, skip=skip, limit=limit)
-
-@router.get("/{stats_id}/", response_model=UserStatistics)
-def read_statistics_by_id(stats_id: int, db: Session = Depends(get_db)):
-    stats = crud.get_statistics_by_id(db, stats_id)
-    if not stats:
-        raise HTTPException(status_code=404, detail="Statistics not found")
-    return stats
 
 @router.get("/user/{user_id}", response_model=UserStatistics)
 def read_user_statistics(user_id: int, db: Session = Depends(get_db)):
-    stats = crud.get_statistics_by_user_id(db, user_id)
-    if not stats:
-        # Если статистики нет, возвращаем пустую (нулевую) структуру, чтобы фронт не падал
-        return UserStatistics(
-            id=0, user_id=user_id,
-            books_in_library=0, books_read=0, books_favorites=0,
-            favorite_author="-", favorite_genre="-"
+    # 1. Загружаем все отзывы пользователя вместе с книгами, авторами, категориями и жанрами
+    reviews = (
+        db.query(UserBookReview)
+        .options(
+            joinedload(UserBookReview.category),
+            joinedload(UserBookReview.book).joinedload(BookEdition.work),
+            joinedload(UserBookReview.genres).joinedload(UserBookReviewGenre.genre)
         )
+        .filter(UserBookReview.user_id == user_id)
+        .all()
+    )
+
+    # 2. Инициализируем счетчики
+    total_books = 0
+    read_count = 0
+    favorites_count = 0
+
+    authors_list = []
+    genres_list = []
+
+    # 3. Проходимся по всем книгам и считаем
+    for review in reviews:
+        total_books += 1
+
+        cat_name = review.category.name if review.category else ""
+
+        # Логика подсчета
+        if cat_name == "Прочитано":
+            read_count += 1
+        elif cat_name == "Любимые":
+            favorites_count += 1
+            # Обычно любимые книги тоже считаются прочитанными
+            read_count += 1
+
+            # Собираем автора (если есть)
+        if review.book and review.book.work:
+            authors_list.append(review.book.work.author)
+
+        # Собираем жанры
+        if review.genres:
+            for g_link in review.genres:
+                if g_link.genre:
+                    genres_list.append(g_link.genre.name)
+
+    # 4. Определяем самого популярного автора
+    favorite_author = "-"
+    if authors_list:
+        # Counter создает словарь {автор: кол-во}, most_common(1) берет топ-1
+        favorite_author = Counter(authors_list).most_common(1)[0][0]
+
+    # 5. Определяем самый популярный жанр
+    favorite_genre = "-"
+    if genres_list:
+        favorite_genre = Counter(genres_list).most_common(1)[0][0]
+
+    # 6. Возвращаем объект статистики
+    # id=0, так как это вычисляемая "на лету" сущность, а не запись из таблицы users_statistics
+    return UserStatistics(
+        id=0,
+        user_id=user_id,
+        books_in_library=total_books,
+        books_read=read_count,
+        books_favorites=favorites_count,
+        favorite_author=favorite_author,
+        favorite_genre=favorite_genre
+    )
+
+
+# Остальные эндпоинты можно оставить или закомментировать,
+# так как фронтенд использует только этот.
+@router.post("/", response_model=UserStatistics, status_code=201)
+def create_statistics(stats: UserStatistics, db: Session = Depends(get_db)):
+    # Заглушка, чтобы не ломать старый код, если он где-то используется
     return stats
 
+
+@router.get("/", response_model=List[UserStatistics])
+def read_statistics(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    return []
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\users_top_characters.py =====
 
@@ -1836,6 +1959,13 @@ def get_notes(db: Session, skip: int = 0, limit: int = 100):
 def get_note(db: Session, note_id: int):
     return db.query(UserBookNote).filter(UserBookNote.id == note_id).first()
 
+def delete_note(db: Session, note_id: int):
+    obj = db.query(UserBookNote).filter(UserBookNote.id == note_id).first()
+    if obj:
+        db.delete(obj)
+        db.commit()
+        return True
+    return False
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\crud\users_book_quotes.py =====
 
@@ -1856,26 +1986,50 @@ def get_quotes(db: Session, skip: int = 0, limit: int = 100):
 def get_quote(db: Session, quote_id: int):
     return db.query(UserBookQuote).filter(UserBookQuote.id == quote_id).first()
 
+def delete_quote(db: Session, quote_id: int):
+    obj = db.query(UserBookQuote).filter(UserBookQuote.id == quote_id).first()
+    if obj:
+        db.delete(obj)
+        db.commit()
+        return True
+    return False
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\crud\users_book_rating.py =====
 
+# app/crud/users_book_rating.py
 from sqlalchemy.orm import Session
 from app.models.users_book_rating import UserBookRating
 from app.schemas.users_book_rating import UserBookRatingCreate
 
+
 def create_rating(db: Session, rating: UserBookRatingCreate):
-    db_rating = UserBookRating(**rating.dict())
-    db.add(db_rating)
-    db.commit()
-    db.refresh(db_rating)
-    return db_rating
+    # Ищем, есть ли уже рейтинг у этого отзыва
+    existing_rating = db.query(UserBookRating).filter(UserBookRating.review_id == rating.review_id).first()
+
+    if existing_rating:
+        # ОБНОВЛЕНИЕ: Если нашли, меняем поля
+        rating_data = rating.dict(exclude_unset=True)
+        for key, value in rating_data.items():
+            setattr(existing_rating, key, value)
+
+        db.commit()
+        db.refresh(existing_rating)
+        return existing_rating
+    else:
+        # СОЗДАНИЕ: Если не нашли, создаем новый
+        db_rating = UserBookRating(**rating.dict())
+        db.add(db_rating)
+        db.commit()
+        db.refresh(db_rating)
+        return db_rating
+
 
 def get_ratings(db: Session, skip: int = 0, limit: int = 100):
     return db.query(UserBookRating).offset(skip).limit(limit).all()
 
+
 def get_rating(db: Session, rating_id: int):
     return db.query(UserBookRating).filter(UserBookRating.id == rating_id).first()
-
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\crud\users_book_review.py =====
 
@@ -1889,6 +2043,7 @@ from app.models.books_editions import BookEdition
 from app.models.books_categories import BookCategory
 from app.schemas.custom_book import BookManualCreate
 from app.models.genre import Genre
+from app.models.users_book_review_genres import UserBookReviewGenre
 
 def create_review(db: Session, review: UserBookReviewCreate) -> UserBookReview:
     db_review = UserBookReview(**review.dict())
@@ -1998,12 +2153,56 @@ def get_review_detail(db: Session, review_id: int):
             joinedload(UserBookReview.rating),
             joinedload(UserBookReview.quotes),
             joinedload(UserBookReview.notes),
-            # Для жанров сложнее, так как это many-to-many через таблицу связку
             joinedload(UserBookReview.genres).joinedload(UserBookReviewGenre.genre)
         )
         .filter(UserBookReview.id == review_id)
         .first()
     )
+
+
+def update_review_category(db: Session, review_id: int, category_name: str):
+    # 1. Ищем сам отзыв
+    review = db.query(UserBookReview).filter(UserBookReview.id == review_id).first()
+    if not review:
+        return None
+
+    # 2. Ищем ID категории по названию (например "Читаю" -> id=2)
+    category = db.query(BookCategory).filter(BookCategory.name == category_name).first()
+    if not category:
+        # Если такой категории нет в базе, ничего не делаем (или можно вернуть ошибку)
+        return None
+
+    # 3. Обновляем
+    review.category_id = category.id
+    db.commit()
+    db.refresh(review)
+    return review
+
+
+def update_review_genres(db: Session, review_id: int, genre_names: list[str]):
+    # 1. Удаляем ВСЕ текущие жанры у этого отзыва
+    db.query(UserBookReviewGenre).filter(UserBookReviewGenre.review_id == review_id).delete()
+
+    # 2. Если список пустой, просто сохраняем удаление
+    if not genre_names:
+        db.commit()
+        return []
+
+    # 3. Ищем ID жанров по их названиям
+    # (SELECT * FROM genres WHERE name IN (...))
+    genres = db.query(Genre).filter(Genre.name.in_(genre_names)).all()
+
+    # 4. Создаем новые связи
+    new_entries = []
+    for genre in genres:
+        entry = UserBookReviewGenre(review_id=review_id, genre_id=genre.id)
+        db.add(entry)
+        new_entries.append(entry)
+
+    db.commit()
+
+    # Возвращаем список объектов жанров (для удобства, если нужно)
+    return genres
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\crud\users_book_review_genres.py =====
 
@@ -2801,45 +3000,46 @@ class PopularQuote(PopularQuoteBase):
     class Config:
         from_attributes = True
 
-
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_book_notes.py =====
 
 from pydantic import BaseModel
 from datetime import datetime
+from typing import Optional
 
 class UserBookNoteBase(BaseModel):
     text: str
 
 class UserBookNoteCreate(UserBookNoteBase):
-    pass
+    review_id: int
 
 class UserBookNote(UserBookNoteBase):
     id: int
-    date: datetime
+    review_id: int
+    date: Optional[datetime] = None
 
     class Config:
         from_attributes = True
-
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_book_quotes.py =====
 
 from pydantic import BaseModel
 from datetime import datetime
+from typing import Optional
 
 class UserBookQuoteBase(BaseModel):
     text: str
-    quote_author: str | None = None
+    quote_author: Optional[str] = None
 
 class UserBookQuoteCreate(UserBookQuoteBase):
-    pass
+    review_id: int
 
 class UserBookQuote(UserBookQuoteBase):
     id: int
-    date: datetime
+    review_id: int  # И здесь полезно
+    date: Optional[datetime] = None
 
     class Config:
         from_attributes = True
-
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_book_rating.py =====
 
@@ -2855,10 +3055,11 @@ class UserBookRatingBase(BaseModel):
     easy_reading_rating: int | None = None
 
 class UserBookRatingCreate(UserBookRatingBase):
-    pass
+    review_id: int
 
 class UserBookRating(UserBookRatingBase):
     id: int
+    review_id: int
 
     class Config:
         from_attributes = True
@@ -2866,9 +3067,10 @@ class UserBookRating(UserBookRatingBase):
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_book_review.py =====
 
-# app/schemas/users_book_review.py
 from typing import List, Optional
 from pydantic import BaseModel
+
+# Импортируем другие схемы (обратите внимание на точки перед названиями файлов)
 from .books_categories import BookCategory
 from .users_book_rating import UserBookRating
 from .users_book_quotes import UserBookQuote
@@ -2900,12 +3102,11 @@ class LibraryBookRead(BaseModel):
     author: str
     cover_url: Optional[str] = None
     category_name: str
-    category_color: str = "#AB66FF" # Можно хранить в БД, но пока захардкодим или вычислим
+    category_color: str = "#AB66FF"
     rating: int = 0
 
     class Config:
         from_attributes = True
-
 
 class BookReviewDetail(BaseModel):
     review_id: int
@@ -2914,22 +3115,28 @@ class BookReviewDetail(BaseModel):
     # Данные книги
     title: str
     author: str
-    pages: Optional[int]
-    year: Optional[int]
-    description: Optional[str]
-    cover_url: Optional[str]
+    pages: Optional[int] = None
+    year: Optional[int] = None
+    description: Optional[str] = None
+    cover_url: Optional[str] = None
 
     # Данные отзыва
     category_name: str
 
     # Вложенные данные
-    rating: Optional[UserBookRating]
+    rating: Optional[UserBookRating] = None
     quotes: List[UserBookQuote] = []
     notes: List[UserBookNote] = []
-    genres: List[GenreRead] = []  # Жанры нужно будет достать отдельно
+    genres: List[GenreRead] = []
 
     class Config:
         from_attributes = True
+
+class UserBookReviewUpdateCategory(BaseModel):
+    category_name: str
+
+class UserBookReviewUpdateGenres(BaseModel):
+    genres: List[str]  # Список названий, например ["Фэнтези", "Роман"]
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_book_review_genres.py =====
 
@@ -3099,7 +3306,6 @@ class UserTopCharacters(UserTopCharactersBase):
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\__init__.py =====
 
-from .popular_quotes import PopularQuoteBase
 
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\project_dump_parts\app_utils.txt =====
@@ -3152,6 +3358,3318 @@ def send_verification_email(to_email: str, code: str):
         return False
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\utils\__init__.py =====
+
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\project_dump_parts\project_dump_parts.txt =====
+
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\project_dump_parts\alembic.txt =====
+
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\alembic\env.py =====
+
+import os
+import sys
+from logging.config import fileConfig
+
+from sqlalchemy import engine_from_config, pool
+from alembic import context
+
+# Добавляем корень проекта в sys.path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+# Загружаем .env (если используете)
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
+
+# Конфигурация Alembic
+config = context.config
+
+# Если в .env есть DATABASE_URL, подставляем его в конфиг alembic
+db_url = os.getenv("DATABASE_URL") or os.getenv("DATABASE_URL_LOCAL")
+if db_url:
+    config.set_main_option("sqlalchemy.url", db_url)
+
+# Логирование
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+# Импортируем Base и модели, чтобы метаданные были зарегистрированы
+from app.db.base import Base
+import app.models.popular_quotes
+import app.models.genre
+import app.models.books_editions
+import app.models.literature_works
+import app.models.users_book_notes
+import app.models.users_book_quotes
+import app.models.users_reading_records
+import app.models.users_book_rating
+import app.models.users_top_characters
+import app.models.users_challenge_books_alphabet
+import app.models.users_challenge_book_of_year
+import app.models.users_challenges
+import app.models.users_statistics
+import app.models.users_personal_data
+import app.models.users_book_review_genres
+import app.models.books_categories
+import app.models.users_book_review
+
+target_metadata = Base.metadata
+
+def run_migrations_online():
+    connectable = engine_from_config(
+        config.get_section(config.config_ini_section),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+    with connectable.connect() as connection:
+        context.configure(connection=connection, target_metadata=target_metadata)
+        with context.begin_transaction():
+            context.run_migrations()
+
+if context.is_offline_mode():
+    context.configure(url=config.get_main_option("sqlalchemy.url"), target_metadata=target_metadata)
+    with context.begin_transaction():
+        context.run_migrations()
+else:
+    run_migrations_online()
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\project_dump_parts\alembic_versions.txt =====
+
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\alembic\versions\17d062ffd73f_add_language_to_books_editions.py =====
+
+"""add language to books_editions
+
+Revision ID: 17d062ffd73f
+Revises: f67d12b7990d
+Create Date: 2025-11-29 21:48:52.214101
+
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+
+# revision identifiers, used by Alembic.
+revision: str = '17d062ffd73f'
+down_revision: Union[str, Sequence[str], None] = 'f67d12b7990d'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.add_column('books_editions', sa.Column('language', sa.String(length=50), nullable=True))
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_column('books_editions', 'language')
+    # ### end Alembic commands ###
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\alembic\versions\22a7d740fe08_create_users_top_characters.py =====
+
+"""create users_top_characters
+
+Revision ID: 22a7d740fe08
+Revises: bd8b55d6e45d
+Create Date: 2025-11-29 23:49:10.208795
+
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+
+# revision identifiers, used by Alembic.
+revision: str = '22a7d740fe08'
+down_revision: Union[str, Sequence[str], None] = 'bd8b55d6e45d'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.create_table('users_top_characters',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('top_1', sa.String(length=255), nullable=True),
+    sa.Column('top_2', sa.String(length=255), nullable=True),
+    sa.Column('top_3', sa.String(length=255), nullable=True),
+    sa.Column('top_4', sa.String(length=255), nullable=True),
+    sa.Column('top_5', sa.String(length=255), nullable=True),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_users_top_characters_id'), 'users_top_characters', ['id'], unique=False)
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_index(op.f('ix_users_top_characters_id'), table_name='users_top_characters')
+    op.drop_table('users_top_characters')
+    # ### end Alembic commands ###
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\alembic\versions\2fd3813264e1_add_relations_with_users_personal_data.py =====
+
+"""add relations with users_personal_data
+
+Revision ID: 2fd3813264e1
+Revises: 908f851b98ac
+Create Date: 2025-11-30 20:38:29.599006
+
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+
+# revision identifiers, used by Alembic.
+revision: str = '2fd3813264e1'
+down_revision: Union[str, Sequence[str], None] = '908f851b98ac'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.add_column('users_challenge_book_of_year', sa.Column('user_id', sa.Integer(), nullable=False))
+    op.create_foreign_key(None, 'users_challenge_book_of_year', 'users_personal_data', ['user_id'], ['id'])
+    op.add_column('users_challenge_books_alphabet', sa.Column('user_id', sa.Integer(), nullable=False))
+    op.create_foreign_key(None, 'users_challenge_books_alphabet', 'users_personal_data', ['user_id'], ['id'])
+    op.add_column('users_challenges', sa.Column('user_id', sa.Integer(), nullable=False))
+    op.create_foreign_key(None, 'users_challenges', 'users_personal_data', ['user_id'], ['id'])
+    op.add_column('users_statistics', sa.Column('user_id', sa.Integer(), nullable=False))
+    op.create_foreign_key(None, 'users_statistics', 'users_personal_data', ['user_id'], ['id'])
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_constraint(None, 'users_statistics', type_='foreignkey')
+    op.drop_column('users_statistics', 'user_id')
+    op.drop_constraint(None, 'users_challenges', type_='foreignkey')
+    op.drop_column('users_challenges', 'user_id')
+    op.drop_constraint(None, 'users_challenge_books_alphabet', type_='foreignkey')
+    op.drop_column('users_challenge_books_alphabet', 'user_id')
+    op.drop_constraint(None, 'users_challenge_book_of_year', type_='foreignkey')
+    op.drop_column('users_challenge_book_of_year', 'user_id')
+    # ### end Alembic commands ###
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\alembic\versions\316574416a9d_create_genres_table.py =====
+
+"""create genres table
+
+Revision ID: 316574416a9d
+Revises: f8f32195f7ff
+Create Date: 2025-11-29 20:21:30.042282
+
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+
+# revision identifiers, used by Alembic.
+revision: str = '316574416a9d'
+down_revision: Union[str, Sequence[str], None] = 'f8f32195f7ff'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    op.create_table(
+        'genres',
+        sa.Column('id', sa.Integer(), primary_key=True, nullable=False),
+        sa.Column('name', sa.String(length=200), nullable=False),
+    )
+    op.create_unique_constraint('uq_genres_name', 'genres', ['name'])
+
+    genres = [
+        "Young adult",
+        "Античная литература",
+        "Белорусская литература",
+        "Биография, мемуары",
+        "Бизнес-книги",
+        "Боевик",
+        "Детектив",
+        "Детская литература",
+        "Журнал, газета, статья",
+        "Зарубежная литература",
+        "Здоровье, медицина",
+        "Историческая литература",
+        "Комедия",
+        "Комикс, манга, манхва, вебтун",
+        "Культура, искусство",
+        "Мифы, легенды, эпос",
+        "На иностранном языке",
+        "Научно-популярная литература",
+        "Научная фантастика",
+        "Нон-фикшн",
+        "Приключения",
+        "Психология",
+        "Пьеса",
+        "Религия",
+        "Роман",
+        "Русская классика",
+        "Стихи, поэзия",
+        "Техническая литература",
+        "Триллер",
+        "Ужасы, мистика",
+        "Учебная литература",
+        "Фантастика",
+        "Философия",
+        "Фэнтези",
+        "Энциклопедия, справочник",
+        "18+"
+    ]
+    for g in genres:
+        op.execute(
+            sa.text("INSERT INTO genres (name) VALUES (:name) ON CONFLICT (name) DO NOTHING")
+            .bindparams(name=g)
+        )
+
+def downgrade() -> None:
+    op.drop_table('genres')
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\alembic\versions\33202f8c22ce_add_users_book_review_and_related_tables.py =====
+
+"""add users_book_review and related tables
+
+Revision ID: 33202f8c22ce
+Revises: 2fd3813264e1
+Create Date: 2025-11-30 22:43:41.622983
+
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+
+# revision identifiers, used by Alembic.
+revision: str = '33202f8c22ce'
+down_revision: Union[str, Sequence[str], None] = '2fd3813264e1'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.create_table('books_categories',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('name', sa.String(length=50), nullable=False),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('name')
+    )
+    op.create_index(op.f('ix_books_categories_id'), 'books_categories', ['id'], unique=False)
+    op.create_table('users_book_review',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('user_id', sa.Integer(), nullable=False),
+    sa.Column('book_id', sa.Integer(), nullable=False),
+    sa.Column('category_id', sa.Integer(), nullable=False),
+    sa.ForeignKeyConstraint(['book_id'], ['books_editions.id'], ),
+    sa.ForeignKeyConstraint(['category_id'], ['books_categories.id'], ),
+    sa.ForeignKeyConstraint(['user_id'], ['users_personal_data.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_users_book_review_id'), 'users_book_review', ['id'], unique=False)
+    op.create_table('users_book_review_genres',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('review_id', sa.Integer(), nullable=False),
+    sa.Column('genre_id', sa.Integer(), nullable=False),
+    sa.ForeignKeyConstraint(['genre_id'], ['genres.id'], ),
+    sa.ForeignKeyConstraint(['review_id'], ['users_book_review.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_users_book_review_genres_id'), 'users_book_review_genres', ['id'], unique=False)
+    op.add_column('users_book_notes', sa.Column('review_id', sa.Integer(), nullable=False))
+    op.create_foreign_key(None, 'users_book_notes', 'users_book_review', ['review_id'], ['id'])
+    op.add_column('users_book_quotes', sa.Column('review_id', sa.Integer(), nullable=False))
+    op.create_foreign_key(None, 'users_book_quotes', 'users_book_review', ['review_id'], ['id'])
+    op.add_column('users_book_rating', sa.Column('review_id', sa.Integer(), nullable=False))
+    op.create_unique_constraint(None, 'users_book_rating', ['review_id'])
+    op.create_foreign_key(None, 'users_book_rating', 'users_book_review', ['review_id'], ['id'])
+    op.add_column('users_challenge_book_of_year', sa.Column('review_id', sa.Integer(), nullable=False))
+    op.create_foreign_key(None, 'users_challenge_book_of_year', 'users_book_review', ['review_id'], ['id'])
+    op.add_column('users_challenge_books_alphabet', sa.Column('review_id', sa.Integer(), nullable=False))
+    op.create_foreign_key(None, 'users_challenge_books_alphabet', 'users_book_review', ['review_id'], ['id'])
+    op.add_column('users_reading_records', sa.Column('review_id', sa.Integer(), nullable=False))
+    op.create_foreign_key(None, 'users_reading_records', 'users_book_review', ['review_id'], ['id'])
+    op.add_column('users_top_characters', sa.Column('review_id', sa.Integer(), nullable=False))
+    op.create_unique_constraint(None, 'users_top_characters', ['review_id'])
+    op.create_foreign_key(None, 'users_top_characters', 'users_book_review', ['review_id'], ['id'])
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_constraint(None, 'users_top_characters', type_='foreignkey')
+    op.drop_constraint(None, 'users_top_characters', type_='unique')
+    op.drop_column('users_top_characters', 'review_id')
+    op.drop_constraint(None, 'users_reading_records', type_='foreignkey')
+    op.drop_column('users_reading_records', 'review_id')
+    op.drop_constraint(None, 'users_challenge_books_alphabet', type_='foreignkey')
+    op.drop_column('users_challenge_books_alphabet', 'review_id')
+    op.drop_constraint(None, 'users_challenge_book_of_year', type_='foreignkey')
+    op.drop_column('users_challenge_book_of_year', 'review_id')
+    op.drop_constraint(None, 'users_book_rating', type_='foreignkey')
+    op.drop_constraint(None, 'users_book_rating', type_='unique')
+    op.drop_column('users_book_rating', 'review_id')
+    op.drop_constraint(None, 'users_book_quotes', type_='foreignkey')
+    op.drop_column('users_book_quotes', 'review_id')
+    op.drop_constraint(None, 'users_book_notes', type_='foreignkey')
+    op.drop_column('users_book_notes', 'review_id')
+    op.drop_index(op.f('ix_users_book_review_genres_id'), table_name='users_book_review_genres')
+    op.drop_table('users_book_review_genres')
+    op.drop_index(op.f('ix_users_book_review_id'), table_name='users_book_review')
+    op.drop_table('users_book_review')
+    op.drop_index(op.f('ix_books_categories_id'), table_name='books_categories')
+    op.drop_table('books_categories')
+    # ### end Alembic commands ###
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\alembic\versions\725b1d704ec7_create_users_book_notes.py =====
+
+"""create users_book_notes
+
+Revision ID: 725b1d704ec7
+Revises: 17d062ffd73f
+Create Date: 2025-11-29 22:46:22.336812
+
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+
+# revision identifiers, used by Alembic.
+revision: str = '725b1d704ec7'
+down_revision: Union[str, Sequence[str], None] = '17d062ffd73f'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.create_table('users_book_notes',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('text', sa.Text(), nullable=False),
+    sa.Column('date', sa.DateTime(), nullable=True),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_users_book_notes_id'), 'users_book_notes', ['id'], unique=False)
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_index(op.f('ix_users_book_notes_id'), table_name='users_book_notes')
+    op.drop_table('users_book_notes')
+    # ### end Alembic commands ###
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\alembic\versions\758366379bad_create_users_reading_records.py =====
+
+"""create users_reading_records
+
+Revision ID: 758366379bad
+Revises: ecb9ff41ebcb
+Create Date: 2025-11-29 23:27:16.076853
+
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+
+# revision identifiers, used by Alembic.
+revision: str = '758366379bad'
+down_revision: Union[str, Sequence[str], None] = 'ecb9ff41ebcb'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.create_table('users_reading_records',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('start_date', sa.Date(), nullable=True),
+    sa.Column('end_date', sa.Date(), nullable=True),
+    sa.Column('result', sa.String(length=50), nullable=False),
+    sa.Column('comment', sa.Text(), nullable=True),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_users_reading_records_id'), 'users_reading_records', ['id'], unique=False)
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_index(op.f('ix_users_reading_records_id'), table_name='users_reading_records')
+    op.drop_table('users_reading_records')
+    # ### end Alembic commands ###
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\alembic\versions\7588e4eda91c_create_users_challenge_books_alphabet.py =====
+
+"""create users_challenge_books_alphabet
+
+Revision ID: 7588e4eda91c
+Revises: 22a7d740fe08
+Create Date: 2025-11-30 19:47:08.556049
+
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+
+# revision identifiers, used by Alembic.
+revision: str = '7588e4eda91c'
+down_revision: Union[str, Sequence[str], None] = '22a7d740fe08'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.create_table('users_challenge_books_alphabet',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('letter', sa.String(length=1), nullable=False),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_users_challenge_books_alphabet_id'), 'users_challenge_books_alphabet', ['id'], unique=False)
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_index(op.f('ix_users_challenge_books_alphabet_id'), table_name='users_challenge_books_alphabet')
+    op.drop_table('users_challenge_books_alphabet')
+    # ### end Alembic commands ###
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\alembic\versions\908f851b98ac_create_users_personal_data.py =====
+
+"""create users_personal_data
+
+Revision ID: 908f851b98ac
+Revises: da48215a7e8f
+Create Date: 2025-11-30 20:29:01.713327
+
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+
+# revision identifiers, used by Alembic.
+revision: str = '908f851b98ac'
+down_revision: Union[str, Sequence[str], None] = 'da48215a7e8f'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.create_table('users_personal_data',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('username', sa.String(length=50), nullable=False),
+    sa.Column('email', sa.String(length=255), nullable=False),
+    sa.Column('password_hash', sa.String(length=255), nullable=False),
+    sa.Column('agreement_accepted', sa.Boolean(), nullable=True),
+    sa.Column('registered_at', sa.DateTime(), nullable=True),
+    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('profile_photo', sa.String(length=255), nullable=True),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('email'),
+    sa.UniqueConstraint('username')
+    )
+    op.create_index(op.f('ix_users_personal_data_id'), 'users_personal_data', ['id'], unique=False)
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_index(op.f('ix_users_personal_data_id'), table_name='users_personal_data')
+    op.drop_table('users_personal_data')
+    # ### end Alembic commands ###
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\alembic\versions\bb018fe2ae50_create_users_challenge_book_of_year.py =====
+
+"""create users_challenge_book_of_year
+
+Revision ID: bb018fe2ae50
+Revises: 7588e4eda91c
+Create Date: 2025-11-30 19:56:55.401962
+
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+
+# revision identifiers, used by Alembic.
+revision: str = 'bb018fe2ae50'
+down_revision: Union[str, Sequence[str], None] = '7588e4eda91c'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.create_table('users_challenge_book_of_year',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('month', sa.Integer(), nullable=True),
+    sa.Column('stage', sa.String(length=50), nullable=False),
+    sa.Column('is_winner', sa.Boolean(), nullable=True),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_users_challenge_book_of_year_id'), 'users_challenge_book_of_year', ['id'], unique=False)
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_index(op.f('ix_users_challenge_book_of_year_id'), table_name='users_challenge_book_of_year')
+    op.drop_table('users_challenge_book_of_year')
+    # ### end Alembic commands ###
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\alembic\versions\bd8b55d6e45d_create_users_book_rating.py =====
+
+"""create users_book_rating
+
+Revision ID: bd8b55d6e45d
+Revises: 758366379bad
+Create Date: 2025-11-29 23:41:46.150237
+
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+
+# revision identifiers, used by Alembic.
+revision: str = 'bd8b55d6e45d'
+down_revision: Union[str, Sequence[str], None] = '758366379bad'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.create_table('users_book_rating',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('total_rating', sa.Integer(), nullable=False),
+    sa.Column('characters_rating', sa.Integer(), nullable=True),
+    sa.Column('plot_rating', sa.Integer(), nullable=True),
+    sa.Column('relations_rating', sa.Integer(), nullable=True),
+    sa.Column('emotionality_rating', sa.Integer(), nullable=True),
+    sa.Column('ending_rating', sa.Integer(), nullable=True),
+    sa.Column('easy_reading_rating', sa.Integer(), nullable=True),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_users_book_rating_id'), 'users_book_rating', ['id'], unique=False)
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_index(op.f('ix_users_book_rating_id'), table_name='users_book_rating')
+    op.drop_table('users_book_rating')
+    # ### end Alembic commands ###
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\alembic\versions\da48215a7e8f_create_users_statistics.py =====
+
+"""create users_statistics
+
+Revision ID: da48215a7e8f
+Revises: ddfa1f232766
+Create Date: 2025-11-30 20:20:49.550020
+
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+
+# revision identifiers, used by Alembic.
+revision: str = 'da48215a7e8f'
+down_revision: Union[str, Sequence[str], None] = 'ddfa1f232766'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.create_table('users_statistics',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('books_in_library', sa.Integer(), nullable=True),
+    sa.Column('books_read', sa.Integer(), nullable=True),
+    sa.Column('books_favorites', sa.Integer(), nullable=True),
+    sa.Column('favorite_author', sa.String(length=255), nullable=True),
+    sa.Column('favorite_genre', sa.String(length=100), nullable=True),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_users_statistics_id'), 'users_statistics', ['id'], unique=False)
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_index(op.f('ix_users_statistics_id'), table_name='users_statistics')
+    op.drop_table('users_statistics')
+    # ### end Alembic commands ###
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\alembic\versions\ddfa1f232766_add_fk_from_challenges_to_alphabet_and_.py =====
+
+"""add FK from challenges to alphabet and book_of_year
+
+Revision ID: ddfa1f232766
+Revises: e44138ccdf6a
+Create Date: 2025-11-30 20:08:41.767755
+
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+
+# revision identifiers, used by Alembic.
+revision: str = 'ddfa1f232766'
+down_revision: Union[str, Sequence[str], None] = 'e44138ccdf6a'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.add_column('users_challenge_book_of_year', sa.Column('challenge_id', sa.Integer(), nullable=False))
+    op.create_foreign_key(None, 'users_challenge_book_of_year', 'users_challenges', ['challenge_id'], ['id'])
+    op.add_column('users_challenge_books_alphabet', sa.Column('challenge_id', sa.Integer(), nullable=False))
+    op.create_foreign_key(None, 'users_challenge_books_alphabet', 'users_challenges', ['challenge_id'], ['id'])
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_constraint(None, 'users_challenge_books_alphabet', type_='foreignkey')
+    op.drop_column('users_challenge_books_alphabet', 'challenge_id')
+    op.drop_constraint(None, 'users_challenge_book_of_year', type_='foreignkey')
+    op.drop_column('users_challenge_book_of_year', 'challenge_id')
+    # ### end Alembic commands ###
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\alembic\versions\de8061a41eee_add_verification_fields.py =====
+
+"""add verification fields
+
+Revision ID: de8061a41eee
+Revises: 33202f8c22ce
+Create Date: 2025-12-15 01:17:33.290890
+
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+
+# revision identifiers, used by Alembic.
+revision: str = 'de8061a41eee'
+down_revision: Union[str, Sequence[str], None] = '33202f8c22ce'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.add_column('users_personal_data', sa.Column('verification_code', sa.String(length=6), nullable=True))
+    op.add_column('users_personal_data', sa.Column('is_verified', sa.Boolean(), nullable=True))
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_column('users_personal_data', 'is_verified')
+    op.drop_column('users_personal_data', 'verification_code')
+    # ### end Alembic commands ###
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\alembic\versions\e44138ccdf6a_create_users_challenges.py =====
+
+"""create users_challenges
+
+Revision ID: e44138ccdf6a
+Revises: bb018fe2ae50
+Create Date: 2025-11-30 20:02:13.612813
+
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+
+# revision identifiers, used by Alembic.
+revision: str = 'e44138ccdf6a'
+down_revision: Union[str, Sequence[str], None] = 'bb018fe2ae50'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.create_table('users_challenges',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('challenge_type', sa.String(length=50), nullable=False),
+    sa.Column('started_at', sa.DateTime(), nullable=True),
+    sa.Column('finished_at', sa.DateTime(), nullable=True),
+    sa.Column('status', sa.String(length=50), nullable=True),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_users_challenges_id'), 'users_challenges', ['id'], unique=False)
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_index(op.f('ix_users_challenges_id'), table_name='users_challenges')
+    op.drop_table('users_challenges')
+    # ### end Alembic commands ###
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\alembic\versions\ecb9ff41ebcb_create_users_book_quotes.py =====
+
+"""create users_book_quotes
+
+Revision ID: ecb9ff41ebcb
+Revises: 725b1d704ec7
+Create Date: 2025-11-29 23:10:13.421630
+
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+
+# revision identifiers, used by Alembic.
+revision: str = 'ecb9ff41ebcb'
+down_revision: Union[str, Sequence[str], None] = '725b1d704ec7'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.create_table('users_book_quotes',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('text', sa.Text(), nullable=False),
+    sa.Column('quote_author', sa.String(length=255), nullable=True),
+    sa.Column('date', sa.DateTime(), nullable=True),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_users_book_quotes_id'), 'users_book_quotes', ['id'], unique=False)
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_index(op.f('ix_users_book_quotes_id'), table_name='users_book_quotes')
+    op.drop_table('users_book_quotes')
+    # ### end Alembic commands ###
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\alembic\versions\f67d12b7990d_create_literature_works_and_books_.py =====
+
+"""create literature_works and books_editions
+
+Revision ID: f67d12b7990d
+Revises: 316574416a9d
+Create Date: 2025-11-29 21:45:44.102699
+
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+
+# revision identifiers, used by Alembic.
+revision: str = 'f67d12b7990d'
+down_revision: Union[str, Sequence[str], None] = '316574416a9d'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.create_table('literature_works',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('title', sa.String(length=255), nullable=False),
+    sa.Column('author', sa.String(length=255), nullable=False),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_literature_works_id'), 'literature_works', ['id'], unique=False)
+    op.create_table('books_editions',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('literature_work_id', sa.Integer(), nullable=False),
+    sa.Column('original_year', sa.Integer(), nullable=True),
+    sa.Column('description', sa.Text(), nullable=True),
+    sa.Column('publisher', sa.String(length=255), nullable=True),
+    sa.Column('year', sa.Integer(), nullable=True),
+    sa.Column('pages', sa.Integer(), nullable=True),
+    sa.Column('cover_url', sa.String(length=500), nullable=True),
+    sa.Column('isbn', sa.String(length=20), nullable=True),
+    sa.ForeignKeyConstraint(['literature_work_id'], ['literature_works.id'], ),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('isbn')
+    )
+    op.create_index(op.f('ix_books_editions_id'), 'books_editions', ['id'], unique=False)
+    op.create_index(op.f('ix_genres_id'), 'genres', ['id'], unique=False)
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_index(op.f('ix_genres_id'), table_name='genres')
+    op.drop_index(op.f('ix_books_editions_id'), table_name='books_editions')
+    op.drop_table('books_editions')
+    op.drop_index(op.f('ix_literature_works_id'), table_name='literature_works')
+    op.drop_table('literature_works')
+    # ### end Alembic commands ###
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\alembic\versions\f8f32195f7ff_create_popular_quotes_table.py =====
+
+from typing import Sequence, Union
+from alembic import op
+import sqlalchemy as sa
+
+# revision identifiers, used by Alembic.
+revision: str = 'f8f32195f7ff'
+down_revision: Union[str, Sequence[str], None] = None
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    op.create_table(
+        'popular_quotes',
+        sa.Column('id', sa.Integer(), primary_key=True, nullable=False),
+        sa.Column('text', sa.Text(), nullable=False),
+        sa.Column('book_title', sa.String(length=255), nullable=False),
+    )
+
+
+def downgrade() -> None:
+    op.drop_table('popular_quotes')
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\project_dump_parts\app.txt =====
+
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\main.py =====
+
+# app/main.py
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.api import (
+    popular_quotes,
+    genre,
+    literature,
+    users_book_notes,
+    users_book_quotes,
+    users_reading_records,
+    users_book_rating,
+    users_top_characters,
+    users_challenge_books_alphabet,
+    users_challenge_book_of_year,
+    users_challenges,
+    users_statistics,
+    users_personal_data,
+    users_book_review_genres,
+    books_categories,
+    users_book_review,
+    auth,
+)
+
+app = FastAPI(title="OwlReads API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Единообразие: каждый сегмент — ровно один раз
+app.include_router(popular_quotes.router, prefix="/api/quotes", tags=["quotes"])
+app.include_router(genre.router,             prefix="/api/genres", tags=["genres"])
+app.include_router(literature.router,        prefix="/api/literature", tags=["literature"])
+
+app.include_router(users_book_notes.router,          prefix="/api/users_book_notes", tags=["users_book_notes"])
+app.include_router(users_book_quotes.router,         prefix="/api/users_book_quotes", tags=["users_book_quotes"])
+app.include_router(users_reading_records.router,     prefix="/api/users_reading_records", tags=["users_reading_records"])
+app.include_router(users_book_rating.router,         prefix="/api/users_book_rating", tags=["users_book_rating"])
+app.include_router(users_top_characters.router,      prefix="/api/users_top_characters", tags=["users_top_characters"])
+app.include_router(users_challenge_books_alphabet.router, prefix="/api/users_challenge_books_alphabet", tags=["users_challenge_books_alphabet"])
+app.include_router(users_challenge_book_of_year.router,   prefix="/api/users_challenge_book_of_year", tags=["users_challenge_book_of_year"])
+app.include_router(users_challenges.router,          prefix="/api/users_challenges", tags=["users_challenges"])
+app.include_router(users_statistics.router,          prefix="/api/users_statistics", tags=["users_statistics"])
+app.include_router(users_personal_data.router,       prefix="/api/users_personal_data", tags=["users_personal_data"])
+app.include_router(users_book_review_genres.router,  prefix="/api/users_book_review_genres", tags=["users_book_review_genres"])
+app.include_router(books_categories.router,          prefix="/api/books_categories", tags=["books_categories"])
+app.include_router(users_book_review.router,         prefix="/api/users_book_review", tags=["users_book_review"])
+
+app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\__init__.py =====
+
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\project_dump_parts\app_api.txt =====
+
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\auth.py =====
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+from pydantic import BaseModel, EmailStr
+
+from app.db.session import get_db
+from app.crud import users_personal_data as crud
+from app.core.security import verify_password, create_access_token
+
+router = APIRouter()
+
+class LoginSchema(BaseModel):
+    email: EmailStr
+    password: str
+
+
+@router.post("/login")
+def login(login_data: LoginSchema, db: Session = Depends(get_db)):
+    # 1. Ищем пользователя по email
+    user = crud.get_user_by_email(db, email=login_data.email)
+
+    # 2. Если пользователя нет ИЛИ пароль не подходит
+    if not user or not verify_password(login_data.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Неверный email или пароль",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # 3. Если всё ок, создаем токен
+    access_token = create_access_token(data={"sub": str(user.id)})
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user_id": user.id,
+        "username": user.username
+    }
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\books_categories.py =====
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import List
+
+from app.db.session import get_db
+from app.schemas.books_categories import BookCategory, BookCategoryCreate
+from app.crud import books_categories as crud
+
+router = APIRouter()
+
+@router.post("/", response_model=BookCategory, status_code=201)
+def create_category(category: BookCategoryCreate, db: Session = Depends(get_db)):
+    db_category = crud.get_category_by_name(db, category.name)
+    if db_category:
+        raise HTTPException(status_code=400, detail="Category already exists")
+    return crud.create_category(db, category)
+
+@router.get("/", response_model=List[BookCategory])
+def read_categories(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    return crud.get_categories(db, skip=skip, limit=limit)
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\genre.py =====
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from app.db.session import get_db   # <-- теперь импортируем отсюда
+from app.models.genre import Genre as GenreModel
+from app.schemas.genre import GenreRead
+
+router = APIRouter()
+
+@router.get("/", response_model=list[GenreRead])
+def list_genres(db: Session = Depends(get_db)):
+    return db.query(GenreModel).order_by(GenreModel.id).all()
+
+@router.get("/{genre_id}/", response_model=GenreRead)
+def get_genre(genre_id: int, db: Session = Depends(get_db)):
+    genre = db.query(GenreModel).get(genre_id)
+    if not genre:
+        raise HTTPException(status_code=404, detail="Genre not found")
+    return genre
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\literature.py =====
+
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+from typing import List
+from app.schemas.literature import LiteratureWork, LiteratureWorkCreate, BookEdition, BookEditionCreate
+from app.crud import literature as crud
+from app.db.session import get_db
+from app.schemas.literature import BookSearchResponse
+
+router = APIRouter()
+
+# --- LiteratureWork ---
+@router.post("/works", response_model=LiteratureWork)
+def create_work(work: LiteratureWorkCreate, db: Session = Depends(get_db)):
+    return crud.create_literature_work(db, work)
+
+@router.get("/works", response_model=List[LiteratureWork])
+def read_works(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    return crud.get_literature_works(db, skip=skip, limit=limit)
+
+@router.get("/works/{work_id}", response_model=LiteratureWork)
+def read_work(work_id: int, db: Session = Depends(get_db)):
+    return crud.get_literature_work(db, work_id)
+
+
+# --- BookEdition ---
+@router.post("/editions", response_model=BookEdition)
+def create_edition(edition: BookEditionCreate, db: Session = Depends(get_db)):
+    return crud.create_book_edition(db, edition)
+
+@router.get("/editions", response_model=List[BookEdition])
+def read_editions(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    return crud.get_book_editions(db, skip=skip, limit=limit)
+
+@router.get("/editions/{edition_id}", response_model=BookEdition)
+def read_edition(edition_id: int, db: Session = Depends(get_db)):
+    return crud.get_book_edition(db, edition_id)
+
+@router.get("/search", response_model=List[BookSearchResponse])
+def search_books_endpoint(q: str, db: Session = Depends(get_db)):
+    if not q:
+        return []
+
+    books = crud.search_books(db, query=q)
+
+    # Преобразуем ORM модели в Pydantic схему вручную или автоматически
+    results = []
+    for book in books:
+        results.append(BookSearchResponse(
+            id=book.id,
+            title=book.work.title,  # Берем название из связанной таблицы
+            author=book.work.author,  # Берем автора из связанной таблицы
+            cover_url=book.cover_url,
+            year=book.year,
+            source="local"
+        ))
+    return results
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\popular_quotes.py =====
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from sqlalchemy.sql.expression import func  # <--- Импортируем func для SQL функций
+
+from app.db.session import get_db
+from app.models.popular_quotes import PopularQuote as PopularQuoteModel
+from app.schemas.popular_quotes import PopularQuoteCreate, PopularQuote as PopularQuoteSchema
+
+router = APIRouter()
+
+
+@router.post("/", response_model=PopularQuoteSchema, status_code=201)
+def create_quote(quote: PopularQuoteCreate, db: Session = Depends(get_db)):
+    db_quote = PopularQuoteModel(**quote.dict())
+    db.add(db_quote)
+    db.commit()
+    db.refresh(db_quote)
+    return db_quote
+
+
+@router.get("/", response_model=list[PopularQuoteSchema])
+def get_quotes(db: Session = Depends(get_db)):
+    return db.query(PopularQuoteModel).all()
+
+
+@router.get("/{quote_id}/", response_model=PopularQuoteSchema)
+def get_quote(quote_id: int, db: Session = Depends(get_db)):
+    quote = db.query(PopularQuoteModel).get(quote_id)
+    if not quote:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    return quote
+
+@router.get("/random", response_model=PopularQuoteSchema)
+def get_random_quote(db: Session = Depends(get_db)):
+    quote = db.query(PopularQuoteModel).order_by(func.random()).first()
+
+    if not quote:
+        raise HTTPException(status_code=404, detail="No quotes found in database")
+
+    return quote
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\users_book_notes.py =====
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import List
+
+from app.db.session import get_db
+from app.schemas.users_book_notes import UserBookNote, UserBookNoteCreate
+from app.crud import users_book_notes as crud
+
+router = APIRouter()
+
+@router.post("/", response_model=UserBookNote, status_code=201)
+def create_note(note: UserBookNoteCreate, db: Session = Depends(get_db)):
+    return crud.create_note(db, note)
+
+@router.get("/", response_model=List[UserBookNote])
+def read_notes(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    return crud.get_notes(db, skip=skip, limit=limit)
+
+@router.get("/{note_id}/", response_model=UserBookNote)
+def read_note(note_id: int, db: Session = Depends(get_db)):
+    note = crud.get_note(db, note_id)
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found")
+    return note
+
+@router.delete("/{note_id}/", status_code=204)
+def delete_note(note_id: int, db: Session = Depends(get_db)):
+    success = crud.delete_note(db, note_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Note not found")
+    return None
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\users_book_quotes.py =====
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import List
+
+from app.db.session import get_db
+from app.schemas.users_book_quotes import UserBookQuote, UserBookQuoteCreate
+from app.crud import users_book_quotes as crud
+
+router = APIRouter()
+
+@router.post("/", response_model=UserBookQuote, status_code=201)
+def create_quote(quote: UserBookQuoteCreate, db: Session = Depends(get_db)):
+    return crud.create_quote(db, quote)
+
+@router.get("/", response_model=List[UserBookQuote])
+def read_quotes(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    return crud.get_quotes(db, skip=skip, limit=limit)
+
+@router.get("/{quote_id}/", response_model=UserBookQuote)
+def read_quote(quote_id: int, db: Session = Depends(get_db)):
+    quote = crud.get_quote(db, quote_id)
+    if not quote:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    return quote
+
+@router.delete("/{quote_id}/", status_code=204)
+def delete_quote(quote_id: int, db: Session = Depends(get_db)):
+    success = crud.delete_quote(db, quote_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    return None
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\users_book_rating.py =====
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import List
+
+from app.db.session import get_db
+from app.schemas.users_book_rating import UserBookRating, UserBookRatingCreate
+from app.crud import users_book_rating as crud
+
+router = APIRouter()
+
+@router.post("/", response_model=UserBookRating, status_code=201)
+def create_rating(rating: UserBookRatingCreate, db: Session = Depends(get_db)):
+    return crud.create_rating(db, rating)
+
+@router.get("/", response_model=List[UserBookRating])
+def read_ratings(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    return crud.get_ratings(db, skip=skip, limit=limit)
+
+@router.get("/{rating_id}/", response_model=UserBookRating)
+def read_rating(rating_id: int, db: Session = Depends(get_db)):
+    rating = crud.get_rating(db, rating_id)
+    if not rating:
+        raise HTTPException(status_code=404, detail="Rating not found")
+    return rating
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\users_book_review.py =====
+
+# app/api/users_book_review.py
+import logging
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
+from typing import List
+
+from app.db.session import get_db
+from app.schemas.users_book_review import UserBookReview, UserBookReviewCreate, LibraryBookRead, BookReviewDetail, UserBookReviewUpdateCategory, UserBookReviewUpdateGenres
+from app.crud import users_book_review as crud
+from app.schemas.custom_book import BookManualCreate
+
+# Настройка логгера для отладки ошибок 500
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+
+@router.post("/reviews", response_model=UserBookReview, status_code=201)
+def create_review(review: UserBookReviewCreate, db: Session = Depends(get_db)):
+    return crud.create_review(db, review)
+
+
+@router.get("/reviews", response_model=List[UserBookReview])
+def read_reviews(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    return crud.get_reviews(db, skip=skip, limit=limit)
+
+
+@router.get("/reviews/{review_id}/", response_model=UserBookReview)
+def read_review(review_id: int, db: Session = Depends(get_db)):
+    review = crud.get_review_by_id(db, review_id)
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+    return review
+
+
+@router.get("/users/{user_id}/reviews/by_category", response_model=List[UserBookReview])
+def read_user_reviews_by_category(
+        user_id: int,
+        category_name: str = Query(..., description="Название категории, например: Прочитано"),
+        db: Session = Depends(get_db),
+):
+    results = crud.get_user_reviews_by_category_name(db, user_id, category_name)
+    return results
+
+@router.patch("/reviews/{review_id}/category", response_model=UserBookReview)
+def update_category(
+    review_id: int,
+    update_data: UserBookReviewUpdateCategory,
+    db: Session = Depends(get_db)
+):
+    review = crud.update_review_category(db, review_id, update_data.category_name)
+    if not review:
+        raise HTTPException(status_code=404, detail="Review or Category not found")
+    return review
+
+@router.put("/reviews/{review_id}/genres")
+def update_genres(
+    review_id: int,
+    update_data: UserBookReviewUpdateGenres,
+    db: Session = Depends(get_db)
+):
+    crud.update_review_genres(db, review_id, update_data.genres)
+    return {"message": "Genres updated successfully"}
+
+@router.delete("/reviews/{review_id}/", status_code=204)
+def delete_review(review_id: int, db: Session = Depends(get_db)):
+    ok = crud.delete_review(db, review_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Review not found")
+    return None
+
+
+@router.post("/manual", status_code=201)
+def add_book_manually(
+        book_data: BookManualCreate,
+        user_id: int = Query(..., description="ID пользователя"),
+        db: Session = Depends(get_db)
+):
+    review = crud.create_manual_book_review(db, user_id, book_data)
+    if not review:
+        raise HTTPException(status_code=400, detail="Category not found or error creating book")
+
+    return {"message": "Book added successfully", "review_id": review.id}
+
+
+@router.get("/library/{user_id}", response_model=List[LibraryBookRead])
+def read_user_library(user_id: int, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    reviews = crud.get_user_library(db, user_id, skip, limit)
+
+    results = []
+    for review in reviews:
+        # Защита от ошибок, если вдруг данных нет
+        book_title = review.book.work.title if review.book and review.book.work else "Без названия"
+        book_author = review.book.work.author if review.book and review.book.work else "Неизвестный автор"
+        cover = review.book.cover_url if review.book else None
+        cat_name = review.category.name if review.category else "Без категории"
+
+        # Логика цвета
+        color = "#AB66FF"  # Дефолтный
+        if cat_name == "Хочу прочитать":
+            color = "#66A3FF"
+        elif cat_name == "Читаю":
+            color = "#FFB066"
+        elif cat_name == "Брошено":
+            color = "#FF6666"
+        elif cat_name == "Любимые":
+            color = "#FF66B3"
+
+        rating_val = review.rating.total_rating if review.rating else 0
+
+        results.append(LibraryBookRead(
+            review_id=review.id,
+            book_id=review.book_id,
+            title=book_title,
+            author=book_author,
+            cover_url=cover,
+            category_name=cat_name,
+            category_color=color,
+            rating=rating_val
+        ))
+    return results
+
+
+@router.get("/{review_id}", response_model=BookReviewDetail)
+def read_review_detail(review_id: int, db: Session = Depends(get_db)):
+    try:
+        review = crud.get_review_detail(db, review_id)
+        if not review:
+            raise HTTPException(status_code=404, detail="Review not found")
+
+        # Безопасное получение данных книги
+        if not review.book:
+            print(f"ERROR: Review {review_id} has no book associated!")
+            raise HTTPException(status_code=500, detail="Data integrity error: Book missing")
+
+        if not review.book.work:
+            print(f"ERROR: Book {review.book.id} has no LiteratureWork associated!")
+            # Можно вернуть заглушку или ошибку
+            work_title = "Unknown Title"
+            work_author = "Unknown Author"
+        else:
+            work_title = review.book.work.title
+            work_author = review.book.work.author
+
+        # Собираем жанры из связующей таблицы
+        # Проверяем, что review.genres не None
+        genres_list = []
+        if review.genres:
+            for g in review.genres:
+                if g.genre:
+                    genres_list.append(g.genre)
+
+        return BookReviewDetail(
+            review_id=review.id,
+            book_id=review.book.id,
+            title=work_title,
+            author=work_author,
+            pages=review.book.pages,
+            year=review.book.year,
+            description=review.book.description,
+            cover_url=review.book.cover_url,
+            category_name=review.category.name if review.category else "Без категории",
+            rating=review.rating,  # Pydantic сам обработает None
+            quotes=review.quotes if review.quotes else [],
+            notes=review.notes if review.notes else [],
+            genres=genres_list
+        )
+    except Exception as e:
+        # Логируем ошибку в консоль сервера, чтобы видеть причину 500
+        logger.error(f"Error fetching review detail {review_id}: {str(e)}", exc_info=True)
+        # Пробрасываем ошибку дальше, чтобы фронт получил 500
+        raise e
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\users_book_review_genres.py =====
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import List
+
+from app.db.session import get_db
+from app.schemas.users_book_review_genres import UserBookReviewGenre, UserBookReviewGenreCreate
+from app.crud import users_book_review_genres as crud
+
+router = APIRouter()
+
+@router.post("/", response_model=UserBookReviewGenre, status_code=201)
+def create_review_genre(entry: UserBookReviewGenreCreate, db: Session = Depends(get_db)):
+    return crud.create_review_genre(db, entry)
+
+@router.get("/", response_model=List[UserBookReviewGenre])
+def read_review_genres(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    return crud.get_review_genres(db, skip=skip, limit=limit)
+
+@router.get("/{entry_id}/", response_model=UserBookReviewGenre)
+def read_review_genre(entry_id: int, db: Session = Depends(get_db)):
+    entry = crud.get_review_genre(db, entry_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="ReviewGenre entry not found")
+    return entry
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\users_challenges.py =====
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import List
+
+from app.db.session import get_db
+from app.schemas.users_challenges import UserChallenge, UserChallengeCreate
+from app.crud import users_challenges as crud
+
+router = APIRouter()
+
+@router.post("/", response_model=UserChallenge, status_code=201)
+def create_challenge(challenge: UserChallengeCreate, db: Session = Depends(get_db)):
+    return crud.create_challenge(db, challenge)
+
+@router.get("/", response_model=List[UserChallenge])
+def read_challenges(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    return crud.get_challenges(db, skip=skip, limit=limit)
+
+@router.get("/{challenge_id}/", response_model=UserChallenge)
+def read_challenge(challenge_id: int, db: Session = Depends(get_db)):
+    challenge = crud.get_challenge(db, challenge_id)
+    if not challenge:
+        raise HTTPException(status_code=404, detail="Challenge not found")
+    return challenge
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\users_challenge_books_alphabet.py =====
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import List
+
+from app.db.session import get_db
+from app.schemas.users_challenge_books_alphabet import UserChallengeBooksAlphabet, UserChallengeBooksAlphabetCreate
+from app.crud import users_challenge_books_alphabet as crud
+
+router = APIRouter()
+
+@router.post("/alphabet", response_model=UserChallengeBooksAlphabet, status_code=201)
+def create_alphabet_entry(entry: UserChallengeBooksAlphabetCreate, db: Session = Depends(get_db)):
+    return crud.create_alphabet_entry(db, entry)
+
+@router.get("/alphabet", response_model=List[UserChallengeBooksAlphabet])
+def read_alphabet_entries(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    return crud.get_alphabet_entries(db, skip=skip, limit=limit)
+
+@router.get("/alphabet/{entry_id}/", response_model=UserChallengeBooksAlphabet)
+def read_alphabet_entry(entry_id: int, db: Session = Depends(get_db)):
+    entry = crud.get_alphabet_entry(db, entry_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Alphabet entry not found")
+    return entry
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\users_challenge_book_of_year.py =====
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import List
+
+from app.db.session import get_db
+from app.schemas.users_challenge_book_of_year import UserChallengeBookOfYear, UserChallengeBookOfYearCreate
+from app.crud import users_challenge_book_of_year as crud
+
+router = APIRouter()
+
+@router.post("/book_of_year", response_model=UserChallengeBookOfYear, status_code=201)
+def create_entry(entry: UserChallengeBookOfYearCreate, db: Session = Depends(get_db)):
+    return crud.create_entry(db, entry)
+
+@router.get("/book_of_year", response_model=List[UserChallengeBookOfYear])
+def read_entries(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    return crud.get_entries(db, skip=skip, limit=limit)
+
+@router.get("/book_of_year/{entry_id}/", response_model=UserChallengeBookOfYear)
+def read_entry(entry_id: int, db: Session = Depends(get_db)):
+    entry = crud.get_entry(db, entry_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Book of Year entry not found")
+    return entry
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\users_personal_data.py =====
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import List
+
+from app.db.session import get_db
+from app.schemas.users_personal_data import UserPersonalData, UserPersonalDataCreate, UserVerifyEmail
+from app.crud import users_personal_data as crud
+
+router = APIRouter()
+
+
+@router.post("/", response_model=UserPersonalData, status_code=201)
+def create_user(user: UserPersonalDataCreate, db: Session = Depends(get_db)):
+    db_user = crud.get_user_by_email(db, user.email)
+    if db_user:
+        # Если пользователь есть, но не подтвержден - можно пересоздать код (опционально)
+        # Но пока просто вернем ошибку
+        raise HTTPException(status_code=400, detail="Email already registered")
+    return crud.create_user(db, user)
+
+@router.post("/verify", status_code=200)
+def verify_email(data: UserVerifyEmail, db: Session = Depends(get_db)):
+    result = crud.verify_user_email(db, data.email, data.code)
+
+    if result is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if result is False:
+        raise HTTPException(status_code=400, detail="Invalid verification code")
+
+    return {"message": "Email verified successfully"}
+
+@router.get("/", response_model=List[UserPersonalData])
+def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    return crud.get_users(db, skip=skip, limit=limit)
+
+
+@router.get("/{user_id}/", response_model=UserPersonalData)
+def read_user(user_id: int, db: Session = Depends(get_db)):
+    user = crud.get_user_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\users_reading_records.py =====
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import List
+
+from app.db.session import get_db
+from app.schemas.users_reading_records import UserReadingRecord, UserReadingRecordCreate
+from app.crud import users_reading_records as crud
+
+router = APIRouter()
+
+@router.post("/", response_model=UserReadingRecord, status_code=201)
+def create_record(record: UserReadingRecordCreate, db: Session = Depends(get_db)):
+    return crud.create_record(db, record)
+
+@router.get("/", response_model=List[UserReadingRecord])
+def read_records(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    return crud.get_records(db, skip=skip, limit=limit)
+
+@router.get("/{record_id}/", response_model=UserReadingRecord)
+def read_record(record_id: int, db: Session = Depends(get_db)):
+    record = crud.get_record(db, record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Record not found")
+    return record
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\users_statistics.py =====
+
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session, joinedload
+from typing import List
+from collections import Counter
+
+from app.db.session import get_db
+from app.schemas.users_statistics import UserStatistics
+from app.models.users_book_review import UserBookReview
+from app.models.books_editions import BookEdition
+from app.models.literature_works import LiteratureWork
+from app.models.users_book_review_genres import UserBookReviewGenre
+from app.models.genre import Genre
+from app.models.books_categories import BookCategory
+
+router = APIRouter()
+
+
+@router.get("/user/{user_id}", response_model=UserStatistics)
+def read_user_statistics(user_id: int, db: Session = Depends(get_db)):
+    # 1. Загружаем все отзывы пользователя вместе с книгами, авторами, категориями и жанрами
+    reviews = (
+        db.query(UserBookReview)
+        .options(
+            joinedload(UserBookReview.category),
+            joinedload(UserBookReview.book).joinedload(BookEdition.work),
+            joinedload(UserBookReview.genres).joinedload(UserBookReviewGenre.genre)
+        )
+        .filter(UserBookReview.user_id == user_id)
+        .all()
+    )
+
+    # 2. Инициализируем счетчики
+    total_books = 0
+    read_count = 0
+    favorites_count = 0
+
+    authors_list = []
+    genres_list = []
+
+    # 3. Проходимся по всем книгам и считаем
+    for review in reviews:
+        total_books += 1
+
+        cat_name = review.category.name if review.category else ""
+
+        # Логика подсчета
+        if cat_name == "Прочитано":
+            read_count += 1
+        elif cat_name == "Любимые":
+            favorites_count += 1
+            # Обычно любимые книги тоже считаются прочитанными
+            read_count += 1
+
+            # Собираем автора (если есть)
+        if review.book and review.book.work:
+            authors_list.append(review.book.work.author)
+
+        # Собираем жанры
+        if review.genres:
+            for g_link in review.genres:
+                if g_link.genre:
+                    genres_list.append(g_link.genre.name)
+
+    # 4. Определяем самого популярного автора
+    favorite_author = "-"
+    if authors_list:
+        # Counter создает словарь {автор: кол-во}, most_common(1) берет топ-1
+        favorite_author = Counter(authors_list).most_common(1)[0][0]
+
+    # 5. Определяем самый популярный жанр
+    favorite_genre = "-"
+    if genres_list:
+        favorite_genre = Counter(genres_list).most_common(1)[0][0]
+
+    # 6. Возвращаем объект статистики
+    # id=0, так как это вычисляемая "на лету" сущность, а не запись из таблицы users_statistics
+    return UserStatistics(
+        id=0,
+        user_id=user_id,
+        books_in_library=total_books,
+        books_read=read_count,
+        books_favorites=favorites_count,
+        favorite_author=favorite_author,
+        favorite_genre=favorite_genre
+    )
+
+
+# Остальные эндпоинты можно оставить или закомментировать,
+# так как фронтенд использует только этот.
+@router.post("/", response_model=UserStatistics, status_code=201)
+def create_statistics(stats: UserStatistics, db: Session = Depends(get_db)):
+    # Заглушка, чтобы не ломать старый код, если он где-то используется
+    return stats
+
+
+@router.get("/", response_model=List[UserStatistics])
+def read_statistics(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    return []
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\users_top_characters.py =====
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import List
+
+from app.db.session import get_db
+from app.schemas.users_top_characters import UserTopCharacters, UserTopCharactersCreate
+from app.crud import users_top_characters as crud
+
+router = APIRouter()
+
+@router.post("/", response_model=UserTopCharacters, status_code=201)
+def create_top_characters(top_chars: UserTopCharactersCreate, db: Session = Depends(get_db)):
+    return crud.create_top_characters(db, top_chars)
+
+@router.get("/", response_model=List[UserTopCharacters])
+def read_top_characters(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    return crud.get_top_characters(db, skip=skip, limit=limit)
+
+@router.get("/{record_id}/", response_model=UserTopCharacters)
+def read_top_characters_by_id(record_id: int, db: Session = Depends(get_db)):
+    record = crud.get_top_characters_by_id(db, record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Top characters record not found")
+    return record
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\__init__.py =====
+
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\project_dump_parts\app_core.txt =====
+
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\core\config.py =====
+
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+class Settings:
+    DATABASE_URL: str = os.getenv("DATABASE_URL") or os.getenv("DATABASE_URL_LOCAL")
+
+settings = Settings()
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\core\security.py =====
+
+from datetime import datetime, timedelta
+from typing import Optional
+from jose import jwt
+from passlib.context import CryptContext
+
+# Настройки (в идеале вынести в .env, но для диплома можно так)
+SECRET_KEY = "secret_key_for_owlreads_diploma"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
+
+def get_password_hash(password):
+    return pwd_context.hash(password)
+
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\core\__init__.py =====
+
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\project_dump_parts\app_crud.txt =====
+
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\crud\books_categories.py =====
+
+from sqlalchemy.orm import Session
+from app.models.books_categories import BookCategory
+from app.schemas.books_categories import BookCategoryCreate
+
+def create_category(db: Session, category: BookCategoryCreate):
+    db_category = BookCategory(**category.dict())
+    db.add(db_category)
+    db.commit()
+    db.refresh(db_category)
+    return db_category
+
+def get_categories(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(BookCategory).offset(skip).limit(limit).all()
+
+def get_category_by_name(db: Session, name: str):
+    return db.query(BookCategory).filter(BookCategory.name == name).first()
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\crud\literature.py =====
+
+from sqlalchemy.orm import Session
+from app.models.literature_works import LiteratureWork
+from app.models.books_editions import BookEdition
+from app.schemas.literature import LiteratureWorkCreate, BookEditionCreate
+from sqlalchemy import or_
+
+# --- LiteratureWork ---
+def create_literature_work(db: Session, work: LiteratureWorkCreate):
+    db_work = LiteratureWork(**work.dict())
+    db.add(db_work)
+    db.commit()
+    db.refresh(db_work)
+    return db_work
+
+def get_literature_work(db: Session, work_id: int):
+    return db.query(LiteratureWork).filter(LiteratureWork.id == work_id).first()
+
+def get_literature_works(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(LiteratureWork).offset(skip).limit(limit).all()
+
+
+# --- BookEdition ---
+def create_book_edition(db: Session, edition: BookEditionCreate):
+    db_edition = BookEdition(**edition.dict())
+    db.add(db_edition)
+    db.commit()
+    db.refresh(db_edition)
+    return db_edition
+
+def get_book_edition(db: Session, edition_id: int):
+    return db.query(BookEdition).filter(BookEdition.id == edition_id).first()
+
+def get_book_editions(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(BookEdition).offset(skip).limit(limit).all()
+
+def search_books(db: Session, query: str, limit: int = 10):
+    search_term = f"%{query}%"
+
+    return (
+        db.query(BookEdition)
+        .join(LiteratureWork)
+        .filter(
+            or_(
+                LiteratureWork.title.ilike(search_term),
+                LiteratureWork.author.ilike(search_term)
+            )
+        )
+        .limit(limit)
+        .all()
+    )
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\crud\users_book_notes.py =====
+
+from sqlalchemy.orm import Session
+from app.models.users_book_notes import UserBookNote
+from app.schemas.users_book_notes import UserBookNoteCreate
+
+def create_note(db: Session, note: UserBookNoteCreate):
+    db_note = UserBookNote(**note.dict())
+    db.add(db_note)
+    db.commit()
+    db.refresh(db_note)
+    return db_note
+
+def get_notes(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(UserBookNote).offset(skip).limit(limit).all()
+
+def get_note(db: Session, note_id: int):
+    return db.query(UserBookNote).filter(UserBookNote.id == note_id).first()
+
+def delete_note(db: Session, note_id: int):
+    obj = db.query(UserBookNote).filter(UserBookNote.id == note_id).first()
+    if obj:
+        db.delete(obj)
+        db.commit()
+        return True
+    return False
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\crud\users_book_quotes.py =====
+
+from sqlalchemy.orm import Session
+from app.models.users_book_quotes import UserBookQuote
+from app.schemas.users_book_quotes import UserBookQuoteCreate
+
+def create_quote(db: Session, quote: UserBookQuoteCreate):
+    db_quote = UserBookQuote(**quote.dict())
+    db.add(db_quote)
+    db.commit()
+    db.refresh(db_quote)
+    return db_quote
+
+def get_quotes(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(UserBookQuote).offset(skip).limit(limit).all()
+
+def get_quote(db: Session, quote_id: int):
+    return db.query(UserBookQuote).filter(UserBookQuote.id == quote_id).first()
+
+def delete_quote(db: Session, quote_id: int):
+    obj = db.query(UserBookQuote).filter(UserBookQuote.id == quote_id).first()
+    if obj:
+        db.delete(obj)
+        db.commit()
+        return True
+    return False
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\crud\users_book_rating.py =====
+
+# app/crud/users_book_rating.py
+from sqlalchemy.orm import Session
+from app.models.users_book_rating import UserBookRating
+from app.schemas.users_book_rating import UserBookRatingCreate
+
+
+def create_rating(db: Session, rating: UserBookRatingCreate):
+    # Ищем, есть ли уже рейтинг у этого отзыва
+    existing_rating = db.query(UserBookRating).filter(UserBookRating.review_id == rating.review_id).first()
+
+    if existing_rating:
+        # ОБНОВЛЕНИЕ: Если нашли, меняем поля
+        rating_data = rating.dict(exclude_unset=True)
+        for key, value in rating_data.items():
+            setattr(existing_rating, key, value)
+
+        db.commit()
+        db.refresh(existing_rating)
+        return existing_rating
+    else:
+        # СОЗДАНИЕ: Если не нашли, создаем новый
+        db_rating = UserBookRating(**rating.dict())
+        db.add(db_rating)
+        db.commit()
+        db.refresh(db_rating)
+        return db_rating
+
+
+def get_ratings(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(UserBookRating).offset(skip).limit(limit).all()
+
+
+def get_rating(db: Session, rating_id: int):
+    return db.query(UserBookRating).filter(UserBookRating.id == rating_id).first()
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\crud\users_book_review.py =====
+
+# app/crud/users_book_review.py
+from sqlalchemy.orm import Session
+from sqlalchemy.orm import joinedload
+from app.models.users_book_review import UserBookReview
+from app.schemas.users_book_review import UserBookReviewCreate
+from app.models.literature_works import LiteratureWork
+from app.models.books_editions import BookEdition
+from app.models.books_categories import BookCategory
+from app.schemas.custom_book import BookManualCreate
+from app.models.genre import Genre
+from app.models.users_book_review_genres import UserBookReviewGenre
+
+def create_review(db: Session, review: UserBookReviewCreate) -> UserBookReview:
+    db_review = UserBookReview(**review.dict())
+    db.add(db_review)
+    db.commit()
+    db.refresh(db_review)
+    return db_review
+
+def get_reviews(db: Session, skip: int = 0, limit: int = 100):
+    return (
+        db.query(UserBookReview)
+        .options(
+            joinedload(UserBookReview.category),
+            joinedload(UserBookReview.rating),
+            joinedload(UserBookReview.user),
+            joinedload(UserBookReview.quotes),
+            joinedload(UserBookReview.notes)
+            # Добавь joinedload для всех полей, которые нужны в ответе
+        )
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+def get_review_by_id(db: Session, review_id: int):
+    return db.query(UserBookReview).filter(UserBookReview.id == review_id).first()
+
+def get_user_reviews_by_category_name(db: Session, user_id: int, category_name: str):
+    return (
+        db.query(UserBookReview)
+        .join(UserBookReview.category)
+        .filter(UserBookReview.user_id == user_id)
+        .filter(UserBookReview.category.has(name=category_name))
+        .all()
+    )
+
+def delete_review(db: Session, review_id: int) -> bool:
+    obj = db.query(UserBookReview).filter(UserBookReview.id == review_id).first()
+    if not obj:
+        return False
+    db.delete(obj)
+    db.commit()
+    return True
+
+def get_user_library(db: Session, user_id: int, skip: int = 0, limit: int = 100):
+    return (
+        db.query(UserBookReview)
+        .options(
+            # Теперь Python знает, что такое BookEdition
+            joinedload(UserBookReview.book).joinedload(BookEdition.work),
+            joinedload(UserBookReview.category),
+            joinedload(UserBookReview.rating)
+        )
+        .filter(UserBookReview.user_id == user_id)
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+def create_manual_book_review(db: Session, user_id: int, data: BookManualCreate):
+    # 1. Ищем категорию (она должна существовать)
+    category = db.query(BookCategory).filter(BookCategory.name == data.category_name).first()
+    if not category:
+        # Если категории нет, можно либо вернуть ошибку, либо создать дефолтную.
+        # Для надежности вернем None, фронт должен слать правильные названия.
+        return None
+
+    # 2. Создаем Литературное произведение
+    # (В будущем здесь можно добавить проверку: если такое название+автор есть, не создавать дубль)
+    new_work = LiteratureWork(
+        title=data.title,
+        author=data.author
+    )
+    db.add(new_work)
+    db.flush()  # flush позволяет получить id созданного объекта до commit
+
+    # 3. Создаем Издание книги
+    new_edition = BookEdition(
+        literature_work_id=new_work.id,
+        pages=data.pages,
+        year=data.year,
+        language=data.language,
+        description=data.description,
+        cover_url=data.cover_url
+    )
+    db.add(new_edition)
+    db.flush()
+
+    # 4. Создаем Отзыв пользователя (связь)
+    new_review = UserBookReview(
+        user_id=user_id,
+        book_id=new_edition.id,
+        category_id=category.id
+    )
+    db.add(new_review)
+
+    db.commit()
+    db.refresh(new_review)
+
+    return new_review
+
+def get_review_detail(db: Session, review_id: int):
+    return (
+        db.query(UserBookReview)
+        .options(
+            joinedload(UserBookReview.book).joinedload(BookEdition.work),
+            joinedload(UserBookReview.category),
+            joinedload(UserBookReview.rating),
+            joinedload(UserBookReview.quotes),
+            joinedload(UserBookReview.notes),
+            joinedload(UserBookReview.genres).joinedload(UserBookReviewGenre.genre)
+        )
+        .filter(UserBookReview.id == review_id)
+        .first()
+    )
+
+
+def update_review_category(db: Session, review_id: int, category_name: str):
+    # 1. Ищем сам отзыв
+    review = db.query(UserBookReview).filter(UserBookReview.id == review_id).first()
+    if not review:
+        return None
+
+    # 2. Ищем ID категории по названию (например "Читаю" -> id=2)
+    category = db.query(BookCategory).filter(BookCategory.name == category_name).first()
+    if not category:
+        # Если такой категории нет в базе, ничего не делаем (или можно вернуть ошибку)
+        return None
+
+    # 3. Обновляем
+    review.category_id = category.id
+    db.commit()
+    db.refresh(review)
+    return review
+
+
+def update_review_genres(db: Session, review_id: int, genre_names: list[str]):
+    # 1. Удаляем ВСЕ текущие жанры у этого отзыва
+    db.query(UserBookReviewGenre).filter(UserBookReviewGenre.review_id == review_id).delete()
+
+    # 2. Если список пустой, просто сохраняем удаление
+    if not genre_names:
+        db.commit()
+        return []
+
+    # 3. Ищем ID жанров по их названиям
+    # (SELECT * FROM genres WHERE name IN (...))
+    genres = db.query(Genre).filter(Genre.name.in_(genre_names)).all()
+
+    # 4. Создаем новые связи
+    new_entries = []
+    for genre in genres:
+        entry = UserBookReviewGenre(review_id=review_id, genre_id=genre.id)
+        db.add(entry)
+        new_entries.append(entry)
+
+    db.commit()
+
+    # Возвращаем список объектов жанров (для удобства, если нужно)
+    return genres
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\crud\users_book_review_genres.py =====
+
+from sqlalchemy.orm import Session
+from app.models.users_book_review_genres import UserBookReviewGenre
+from app.schemas.users_book_review_genres import UserBookReviewGenreCreate
+
+def create_review_genre(db: Session, entry: UserBookReviewGenreCreate):
+    db_entry = UserBookReviewGenre(**entry.dict())
+    db.add(db_entry)
+    db.commit()
+    db.refresh(db_entry)
+    return db_entry
+
+def get_review_genres(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(UserBookReviewGenre).offset(skip).limit(limit).all()
+
+def get_review_genre(db: Session, entry_id: int):
+    return db.query(UserBookReviewGenre).filter(UserBookReviewGenre.id == entry_id).first()
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\crud\users_challenges.py =====
+
+from sqlalchemy.orm import Session
+from app.models.users_challenges import UserChallenge
+from app.schemas.users_challenges import UserChallengeCreate
+
+def create_challenge(db: Session, challenge: UserChallengeCreate):
+    db_challenge = UserChallenge(**challenge.dict())
+    db.add(db_challenge)
+    db.commit()
+    db.refresh(db_challenge)
+    return db_challenge
+
+def get_challenges(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(UserChallenge).offset(skip).limit(limit).all()
+
+def get_challenge(db: Session, challenge_id: int):
+    return db.query(UserChallenge).filter(UserChallenge.id == challenge_id).first()
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\crud\users_challenge_books_alphabet.py =====
+
+from sqlalchemy.orm import Session
+from app.models.users_challenge_books_alphabet import UserChallengeBooksAlphabet
+from app.schemas.users_challenge_books_alphabet import UserChallengeBooksAlphabetCreate
+
+def create_alphabet_entry(db: Session, entry: UserChallengeBooksAlphabetCreate):
+    db_entry = UserChallengeBooksAlphabet(**entry.dict())
+    db.add(db_entry)
+    db.commit()
+    db.refresh(db_entry)
+    return db_entry
+
+def get_alphabet_entries(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(UserChallengeBooksAlphabet).offset(skip).limit(limit).all()
+
+def get_alphabet_entry(db: Session, entry_id: int):
+    return db.query(UserChallengeBooksAlphabet).filter(UserChallengeBooksAlphabet.id == entry_id).first()
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\crud\users_challenge_book_of_year.py =====
+
+from sqlalchemy.orm import Session
+from app.models.users_challenge_book_of_year import UserChallengeBookOfYear
+from app.schemas.users_challenge_book_of_year import UserChallengeBookOfYearCreate
+
+def create_entry(db: Session, entry: UserChallengeBookOfYearCreate):
+    db_entry = UserChallengeBookOfYear(**entry.dict())
+    db.add(db_entry)
+    db.commit()
+    db.refresh(db_entry)
+    return db_entry
+
+def get_entries(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(UserChallengeBookOfYear).offset(skip).limit(limit).all()
+
+def get_entry(db: Session, entry_id: int):
+    return db.query(UserChallengeBookOfYear).filter(UserChallengeBookOfYear.id == entry_id).first()
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\crud\users_personal_data.py =====
+
+from sqlalchemy.orm import Session
+from app.models.users_personal_data import UserPersonalData
+from app.schemas.users_personal_data import UserPersonalDataCreate
+from passlib.context import CryptContext
+from app.utils.email import generate_verification_code, send_verification_email
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def create_user(db: Session, user: UserPersonalDataCreate):
+    hashed_password = pwd_context.hash(user.password_hash)
+
+    code = generate_verification_code()
+
+    db_user = UserPersonalData(
+        username=user.username,
+        email=user.email,
+        password_hash=hashed_password,
+        agreement_accepted=user.agreement_accepted,
+        profile_photo=user.profile_photo,
+        verification_code=code,
+        is_verified=False
+    )
+
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+
+    send_verification_email(user.email, code)
+
+    return db_user
+
+def verify_user_email(db: Session, email: str, code: str):
+    user = get_user_by_email(db, email)
+    if not user:
+        return None
+
+    if user.verification_code == code:
+        user.is_verified = True
+        user.verification_code = None
+        db.commit()
+        db.refresh(user)
+        return user
+
+    return False
+
+def get_users(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(UserPersonalData).offset(skip).limit(limit).all()
+
+
+def get_user_by_id(db: Session, user_id: int):
+    return db.query(UserPersonalData).filter(UserPersonalData.id == user_id).first()
+
+
+def get_user_by_email(db: Session, email: str):
+    return db.query(UserPersonalData).filter(UserPersonalData.email == email).first()
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\crud\users_reading_records.py =====
+
+from sqlalchemy.orm import Session
+from app.models.users_reading_records import UserReadingRecord
+from app.schemas.users_reading_records import UserReadingRecordCreate
+
+def create_record(db: Session, record: UserReadingRecordCreate):
+    db_record = UserReadingRecord(**record.dict())
+    db.add(db_record)
+    db.commit()
+    db.refresh(db_record)
+    return db_record
+
+def get_records(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(UserReadingRecord).offset(skip).limit(limit).all()
+
+def get_record(db: Session, record_id: int):
+    return db.query(UserReadingRecord).filter(UserReadingRecord.id == record_id).first()
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\crud\users_statistics.py =====
+
+from sqlalchemy.orm import Session
+from app.models.users_statistics import UserStatistics
+from app.schemas.users_statistics import UserStatisticsCreate
+
+def create_statistics(db: Session, stats: UserStatisticsCreate):
+    db_stats = UserStatistics(**stats.dict())
+    db.add(db_stats)
+    db.commit()
+    db.refresh(db_stats)
+    return db_stats
+
+def get_statistics(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(UserStatistics).offset(skip).limit(limit).all()
+
+def get_statistics_by_id(db: Session, stats_id: int):
+    return db.query(UserStatistics).filter(UserStatistics.id == stats_id).first()
+
+def get_statistics_by_user_id(db: Session, user_id: int):
+    return db.query(UserStatistics).filter(UserStatistics.user_id == user_id).first()
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\crud\users_top_characters.py =====
+
+from sqlalchemy.orm import Session
+from app.models.users_top_characters import UserTopCharacters
+from app.schemas.users_top_characters import UserTopCharactersCreate
+
+def create_top_characters(db: Session, top_chars: UserTopCharactersCreate):
+    db_top_chars = UserTopCharacters(**top_chars.dict())
+    db.add(db_top_chars)
+    db.commit()
+    db.refresh(db_top_chars)
+    return db_top_chars
+
+def get_top_characters(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(UserTopCharacters).offset(skip).limit(limit).all()
+
+def get_top_characters_by_id(db: Session, record_id: int):
+    return db.query(UserTopCharacters).filter(UserTopCharacters.id == record_id).first()
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\crud\__init__.py =====
+
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\project_dump_parts\app_db.txt =====
+
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\db\base.py =====
+
+from sqlalchemy.orm import declarative_base
+
+Base = declarative_base()
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\db\session.py =====
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from app.core.config import settings
+
+engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\db\__init__.py =====
+
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\project_dump_parts\app_models.txt =====
+
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\models\books_categories.py =====
+
+from sqlalchemy import Column, Integer, String
+from sqlalchemy.orm import relationship
+from app.db.base import Base
+
+class BookCategory(Base):
+    __tablename__ = "books_categories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(50), unique=True, nullable=False)
+
+    reviews = relationship("UserBookReview", back_populates="category")
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\models\books_editions.py =====
+
+from sqlalchemy import Column, Integer, String, ForeignKey, Text
+from sqlalchemy.orm import relationship
+from app.db.base import Base
+
+class BookEdition(Base):
+    __tablename__ = "books_editions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    literature_work_id = Column(Integer, ForeignKey("literature_works.id"), nullable=False)
+
+    original_year = Column(Integer, nullable=True)
+    description = Column(Text, nullable=True)
+    publisher = Column(String(255), nullable=True)
+    year = Column(Integer, nullable=True)
+    pages = Column(Integer, nullable=True)
+    cover_url = Column(String(500), nullable=True)
+    isbn = Column(String(20), unique=True, nullable=True)
+    language = Column(String(50), nullable=True)
+
+    # связь с произведением
+    work = relationship("LiteratureWork", back_populates="editions")
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\models\genre.py =====
+
+from sqlalchemy import Column, Integer, String
+from sqlalchemy.orm import relationship
+from app.db.base import Base
+
+class Genre(Base):
+    __tablename__ = "genres"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(200), unique=True, nullable=False)
+
+    reviews = relationship("UserBookReviewGenre", back_populates="genre")
+
+
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\models\literature_works.py =====
+
+from sqlalchemy import Column, Integer, String
+from sqlalchemy.orm import relationship
+from app.db.base import Base
+
+class LiteratureWork(Base):
+    __tablename__ = "literature_works"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(255), nullable=False)
+    author = Column(String(255), nullable=False)
+
+    # связь с изданиями
+    editions = relationship("BookEdition", back_populates="work", cascade="all, delete-orphan")
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\models\popular_quotes.py =====
+
+from sqlalchemy import Column, Integer, String, Text
+from app.db.base import Base
+
+class PopularQuote(Base):
+    __tablename__ = "popular_quotes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    text = Column(Text, nullable=False)
+    book_title = Column(String(255), nullable=False)
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\models\users_book_notes.py =====
+
+from sqlalchemy import Column, Integer, Text, DateTime, ForeignKey
+from sqlalchemy.orm import relationship
+from datetime import datetime
+from app.db.base import Base
+
+class UserBookNote(Base):
+    __tablename__ = "users_book_notes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    text = Column(Text, nullable=False)
+
+    # связь с users_book_review
+    review_id = Column(Integer, ForeignKey("users_book_review.id"), nullable=False)
+
+    date = Column(DateTime, default=datetime.utcnow)
+
+    review = relationship("UserBookReview", back_populates="notes")
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\models\users_book_quotes.py =====
+
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
+from sqlalchemy.orm import relationship
+from datetime import datetime
+from app.db.base import Base
+
+class UserBookQuote(Base):
+    __tablename__ = "users_book_quotes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    text = Column(Text, nullable=False)
+    quote_author = Column(String(255), nullable=True)
+
+    # связь с users_book_review
+    review_id = Column(Integer, ForeignKey("users_book_review.id"), nullable=False)
+
+    date = Column(DateTime, default=datetime.utcnow)
+
+
+    review = relationship("UserBookReview", back_populates="quotes")
+
+
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\models\users_book_rating.py =====
+
+from sqlalchemy import Column, Integer, ForeignKey
+from sqlalchemy.orm import relationship
+from app.db.base import Base
+
+class UserBookRating(Base):
+    __tablename__ = "users_book_rating"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # связь c users_book_review
+    review_id = Column(Integer, ForeignKey("users_book_review.id"), unique=True, nullable=False)
+
+    total_rating = Column(Integer, nullable=False)
+    characters_rating = Column(Integer, nullable=True)
+    plot_rating = Column(Integer, nullable=True)
+    relations_rating = Column(Integer, nullable=True)
+    emotionality_rating = Column(Integer, nullable=True)
+    ending_rating = Column(Integer, nullable=True)
+    easy_reading_rating = Column(Integer, nullable=True)
+
+    review = relationship("UserBookReview", back_populates="rating")
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\models\users_book_review.py =====
+
+from sqlalchemy import Column, Integer, ForeignKey
+from sqlalchemy.orm import relationship
+from app.db.base import Base
+
+
+class UserBookReview(Base):
+    __tablename__ = "users_book_review"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    user_id = Column(Integer, ForeignKey("users_personal_data.id"), nullable=False)
+    book_id = Column(Integer, ForeignKey("books_editions.id"), nullable=False)
+    category_id = Column(Integer, ForeignKey("books_categories.id"), nullable=False)
+
+    # --- СВЯЗИ ---
+    user = relationship("UserPersonalData", back_populates="book_reviews")
+    category = relationship("BookCategory", back_populates="reviews")
+
+    # !!! ВОТ ЭТОЙ СТРОКИ НЕ ХВАТАЛО !!!
+    book = relationship("BookEdition")
+
+    # многие ко многим через join-таблицу
+    genres = relationship("UserBookReviewGenre", back_populates="review", cascade="all, delete-orphan")
+
+    # один к одному
+    rating = relationship("UserBookRating", back_populates="review", uselist=False, cascade="all, delete-orphan")
+    top_characters = relationship("UserTopCharacters", back_populates="review", uselist=False,
+                                  cascade="all, delete-orphan")
+
+    # один ко многим
+    quotes = relationship("UserBookQuote", back_populates="review", cascade="all, delete-orphan")
+    notes = relationship("UserBookNote", back_populates="review", cascade="all, delete-orphan")
+    reading_records = relationship("UserReadingRecord", back_populates="review", cascade="all, delete-orphan")
+    alphabet_challenges = relationship("UserChallengeBooksAlphabet", back_populates="review",
+                                       cascade="all, delete-orphan")
+    book_of_year_challenges = relationship("UserChallengeBookOfYear", back_populates="review",
+                                           cascade="all, delete-orphan")
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\models\users_book_review_genres.py =====
+
+from sqlalchemy import Column, Integer, ForeignKey
+from sqlalchemy.orm import relationship
+from app.db.base import Base
+
+class UserBookReviewGenre(Base):
+    __tablename__ = "users_book_review_genres"
+
+    id = Column(Integer, primary_key=True, index=True)
+    review_id = Column(Integer, ForeignKey("users_book_review.id"), nullable=False)
+    genre_id = Column(Integer, ForeignKey("genres.id"), nullable=False)
+
+    review = relationship("UserBookReview", back_populates="genres")
+    genre = relationship("Genre", back_populates="reviews")
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\models\users_challenges.py =====
+
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy.orm import relationship
+from datetime import datetime
+from app.db.base import Base
+
+class UserChallenge(Base):
+    __tablename__ = "users_challenges"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users_personal_data.id"), nullable=False)
+
+    challenge_type = Column(String(50), nullable=False)
+    started_at = Column(DateTime, default=datetime.utcnow)
+    finished_at = Column(DateTime, nullable=True)
+    status = Column(String(50), default="В процессе")
+
+    user = relationship("UserPersonalData", back_populates="challenges")
+    alphabet_entries = relationship("UserChallengeBooksAlphabet", back_populates="challenge")
+    book_of_year_entries = relationship("UserChallengeBookOfYear", back_populates="challenge")
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\models\users_challenge_books_alphabet.py =====
+
+from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy.orm import relationship
+from app.db.base import Base
+
+class UserChallengeBooksAlphabet(Base):
+    __tablename__ = "users_challenge_books_alphabet"
+
+    id = Column(Integer, primary_key=True, index=True)
+    challenge_id = Column(Integer, ForeignKey("users_challenges.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users_personal_data.id"), nullable=False)
+
+    # связь c users_book_review
+    review_id = Column(Integer, ForeignKey("users_book_review.id"), nullable=False)
+
+    letter = Column(String(1), nullable=False)
+
+    challenge = relationship("UserChallenge", back_populates="alphabet_entries")
+    user = relationship("UserPersonalData", back_populates="alphabet_challenges")
+    review = relationship("UserBookReview", back_populates="alphabet_challenges")
+
+
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\models\users_challenge_book_of_year.py =====
+
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey
+from sqlalchemy.orm import relationship
+from app.db.base import Base
+
+class UserChallengeBookOfYear(Base):
+    __tablename__ = "users_challenge_book_of_year"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # связь с users_challenges
+    challenge_id = Column(Integer, ForeignKey("users_challenges.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users_personal_data.id"), nullable=False)
+
+    # связь c users_book_review
+    review_id = Column(Integer, ForeignKey("users_book_review.id"), nullable=False)
+
+    month = Column(Integer, nullable=True)   # месяц (1–12)
+    stage = Column(String(50), nullable=False)  # этап: month/pair/group/final
+    is_winner = Column(Boolean, default=False)
+
+    challenge = relationship("UserChallenge", back_populates="book_of_year_entries")
+    user = relationship("UserPersonalData", back_populates="book_of_year_challenges")
+    review = relationship("UserBookReview", back_populates="book_of_year_challenges")
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\models\users_personal_data.py =====
+
+from sqlalchemy import Column, Integer, String, Boolean, DateTime
+from sqlalchemy.orm import relationship
+from datetime import datetime
+from app.db.base import Base
+
+class UserPersonalData(Base):
+    __tablename__ = "users_personal_data"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(50), unique=True, nullable=False)
+    email = Column(String(255), unique=True, nullable=False)
+    password_hash = Column(String(255), nullable=False)
+
+    agreement_accepted = Column(Boolean, default=False)
+    registered_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    profile_photo = Column(String(255), nullable=True)
+
+    # --- НОВЫЕ ПОЛЯ ---
+    verification_code = Column(String(6), nullable=True)
+    is_verified = Column(Boolean, default=False)
+    # ------------------
+
+    # обратные связи
+    statistics = relationship("UserStatistics", back_populates="user", uselist=False)
+    challenges = relationship("UserChallenge", back_populates="user")
+    alphabet_challenges = relationship("UserChallengeBooksAlphabet", back_populates="user")
+    book_of_year_challenges = relationship("UserChallengeBookOfYear", back_populates="user")
+    book_reviews = relationship("UserBookReview", back_populates="user")
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\models\users_reading_records.py =====
+
+from sqlalchemy import Column, Integer, String, Text, Date, ForeignKey
+from sqlalchemy.orm import relationship
+from app.db.base import Base
+
+class UserReadingRecord(Base):
+    __tablename__ = "users_reading_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # связь c users_book_review
+    review_id = Column(Integer, ForeignKey("users_book_review.id"), nullable=False)
+
+    start_date = Column(Date, nullable=True)   # дата начала (может быть пустой)
+    end_date = Column(Date, nullable=True)     # дата конца (может быть пустой)
+
+    result = Column(String(50), nullable=False)  # Брошено / Завершено / В процессе
+    comment = Column(Text, nullable=True)
+
+    review = relationship("UserBookReview", back_populates="reading_records")
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\models\users_statistics.py =====
+
+from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy.orm import relationship
+from app.db.base import Base
+
+class UserStatistics(Base):
+    __tablename__ = "users_statistics"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users_personal_data.id"), nullable=False)
+
+    books_in_library = Column(Integer, default=0)
+    books_read = Column(Integer, default=0)
+    books_favorites = Column(Integer, default=0)
+    favorite_author = Column(String(255), nullable=True)
+    favorite_genre = Column(String(100), nullable=True)
+
+    user = relationship("UserPersonalData", back_populates="statistics")
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\models\users_top_characters.py =====
+
+from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy.orm import relationship
+from app.db.base import Base
+
+class UserTopCharacters(Base):
+    __tablename__ = "users_top_characters"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # связь c users_book_review
+    review_id = Column(Integer, ForeignKey("users_book_review.id"), unique=True, nullable=False)
+
+    top_1 = Column(String(255), nullable=True)
+    top_2 = Column(String(255), nullable=True)
+    top_3 = Column(String(255), nullable=True)
+    top_4 = Column(String(255), nullable=True)
+    top_5 = Column(String(255), nullable=True)
+
+    review = relationship("UserBookReview", back_populates="top_characters")
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\models\__init__.py =====
+
+from .popular_quotes import PopularQuote
+from .genre import Genre
+from .books_editions import BookEdition
+from .literature_works import LiteratureWork
+from .users_book_notes import UserBookNote
+from .users_book_quotes import UserBookQuote
+from .users_reading_records import UserReadingRecord
+from .users_book_rating import UserBookRating
+from .users_top_characters import UserTopCharacters
+from .users_challenge_books_alphabet import UserChallengeBooksAlphabet
+from .users_challenge_book_of_year import UserChallengeBookOfYear
+from .users_challenges import UserChallenge
+from .users_statistics import UserStatistics
+from .users_personal_data import UserPersonalData
+from .users_book_review_genres import UserBookReviewGenre
+from .books_categories import BookCategory
+from .users_book_review import UserBookReview
+
+__all__ = ["PopularQuote",
+           "Genre",
+           "BookEdition",
+           "LiteratureWork",
+           "UserBookNote",
+           "UserBookQuote",
+           "UserReadingRecord",
+           "UserBookRating",
+           "UserTopCharacters",
+           "UserChallengeBooksAlphabet",
+           "UserChallengeBookOfYear",
+           "UserChallenge",
+           "UserStatistics",
+           "UserPersonalData",
+           "UserBookReviewGenre",
+           "BookCategory",
+           "UserBookReview"]
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\project_dump_parts\app_schemas.txt =====
+
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\books_categories.py =====
+
+from pydantic import BaseModel
+
+class BookCategoryBase(BaseModel):
+    name: str
+
+class BookCategoryCreate(BookCategoryBase):
+    pass
+
+class BookCategory(BookCategoryBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\custom_book.py =====
+
+from pydantic import BaseModel
+from typing import Optional
+
+class BookManualCreate(BaseModel):
+    title: str
+    author: str
+    pages: Optional[int] = None
+    year: Optional[int] = None
+    language: Optional[str] = None
+    description: Optional[str] = None
+    cover_url: Optional[str] = None
+    category_name: str  # Например: "Читаю", "Прочитано"
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\genre.py =====
+
+# app/schemas/genre.py
+from pydantic import BaseModel
+
+class GenreBase(BaseModel):
+    name: str
+
+class GenreCreate(GenreBase):
+    pass
+
+class GenreRead(GenreBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\literature.py =====
+
+from pydantic import BaseModel
+from typing import Optional, List
+
+# --- LiteratureWork ---
+class LiteratureWorkBase(BaseModel):
+    title: str
+    author: str
+
+class LiteratureWorkCreate(LiteratureWorkBase):
+    pass
+
+class LiteratureWork(LiteratureWorkBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+# --- BookEdition ---
+class BookEditionBase(BaseModel):
+    original_year: Optional[int] = None
+    description: Optional[str] = None
+    publisher: Optional[str] = None
+    year: Optional[int] = None
+    pages: Optional[int] = None
+    cover_url: Optional[str] = None
+    isbn: Optional[str] = None
+    language: Optional[str] = None
+
+class BookEditionCreate(BookEditionBase):
+    literature_work_id: int
+
+class BookEdition(BookEditionBase):
+    id: int
+    literature_work_id: int
+
+    class Config:
+        from_attributes = True
+
+class BookSearchResponse(BaseModel):
+    id: int
+    title: str
+    author: str
+    cover_url: Optional[str] = None
+    year: Optional[int] = None
+
+    # Поле, чтобы фронт понимал, что это книга из нашей БД
+    source: str = "local"
+
+    class Config:
+        from_attributes = True
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\popular_quotes.py =====
+
+# app/schemas/popular_quotes.py
+from pydantic import BaseModel
+
+class PopularQuoteBase(BaseModel):
+    text: str
+    book_title: str
+
+class PopularQuoteCreate(PopularQuoteBase):
+    pass
+
+class PopularQuote(PopularQuoteBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_book_notes.py =====
+
+from pydantic import BaseModel
+from datetime import datetime
+from typing import Optional
+
+class UserBookNoteBase(BaseModel):
+    text: str
+
+class UserBookNoteCreate(UserBookNoteBase):
+    review_id: int
+
+class UserBookNote(UserBookNoteBase):
+    id: int
+    review_id: int
+    date: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_book_quotes.py =====
+
+from pydantic import BaseModel
+from datetime import datetime
+from typing import Optional
+
+class UserBookQuoteBase(BaseModel):
+    text: str
+    quote_author: Optional[str] = None
+
+class UserBookQuoteCreate(UserBookQuoteBase):
+    review_id: int
+
+class UserBookQuote(UserBookQuoteBase):
+    id: int
+    review_id: int  # И здесь полезно
+    date: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_book_rating.py =====
+
+from pydantic import BaseModel
+
+class UserBookRatingBase(BaseModel):
+    total_rating: int
+    characters_rating: int | None = None
+    plot_rating: int | None = None
+    relations_rating: int | None = None
+    emotionality_rating: int | None = None
+    ending_rating: int | None = None
+    easy_reading_rating: int | None = None
+
+class UserBookRatingCreate(UserBookRatingBase):
+    review_id: int
+
+class UserBookRating(UserBookRatingBase):
+    id: int
+    review_id: int
+
+    class Config:
+        from_attributes = True
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_book_review.py =====
+
+from typing import List, Optional
+from pydantic import BaseModel
+
+# Импортируем другие схемы (обратите внимание на точки перед названиями файлов)
+from .books_categories import BookCategory
+from .users_book_rating import UserBookRating
+from .users_book_quotes import UserBookQuote
+from .users_book_notes import UserBookNote
+from .genre import GenreRead
+
+class UserBookReviewBase(BaseModel):
+    user_id: int
+    book_id: int
+    category_id: int
+
+class UserBookReviewCreate(UserBookReviewBase):
+    pass
+
+class UserBookReview(UserBookReviewBase):
+    id: int
+    category: BookCategory
+    rating: Optional[UserBookRating] = None
+    quotes: List[UserBookQuote] = []
+    notes: List[UserBookNote] = []
+
+    class Config:
+        from_attributes = True
+
+class LibraryBookRead(BaseModel):
+    review_id: int
+    book_id: int
+    title: str
+    author: str
+    cover_url: Optional[str] = None
+    category_name: str
+    category_color: str = "#AB66FF"
+    rating: int = 0
+
+    class Config:
+        from_attributes = True
+
+class BookReviewDetail(BaseModel):
+    review_id: int
+    book_id: int
+
+    # Данные книги
+    title: str
+    author: str
+    pages: Optional[int] = None
+    year: Optional[int] = None
+    description: Optional[str] = None
+    cover_url: Optional[str] = None
+
+    # Данные отзыва
+    category_name: str
+
+    # Вложенные данные
+    rating: Optional[UserBookRating] = None
+    quotes: List[UserBookQuote] = []
+    notes: List[UserBookNote] = []
+    genres: List[GenreRead] = []
+
+    class Config:
+        from_attributes = True
+
+class UserBookReviewUpdateCategory(BaseModel):
+    category_name: str
+
+class UserBookReviewUpdateGenres(BaseModel):
+    genres: List[str]  # Список названий, например ["Фэнтези", "Роман"]
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_book_review_genres.py =====
+
+from pydantic import BaseModel
+
+class UserBookReviewGenreBase(BaseModel):
+    review_id: int
+    genre_id: int
+
+class UserBookReviewGenreCreate(UserBookReviewGenreBase):
+    pass
+
+class UserBookReviewGenre(UserBookReviewGenreBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_challenges.py =====
+
+from pydantic import BaseModel
+from datetime import datetime
+
+class UserChallengeBase(BaseModel):
+    challenge_type: str
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    status: str = "В процессе"
+
+class UserChallengeCreate(UserChallengeBase):
+    pass
+
+class UserChallenge(UserChallengeBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_challenge_books_alphabet.py =====
+
+from pydantic import BaseModel
+
+class UserChallengeBooksAlphabetBase(BaseModel):
+    letter: str
+
+class UserChallengeBooksAlphabetCreate(UserChallengeBooksAlphabetBase):
+    pass
+
+class UserChallengeBooksAlphabet(UserChallengeBooksAlphabetBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_challenge_book_of_year.py =====
+
+from pydantic import BaseModel
+
+class UserChallengeBookOfYearBase(BaseModel):
+    month: int | None = None
+    stage: str
+    is_winner: bool = False
+
+class UserChallengeBookOfYearCreate(UserChallengeBookOfYearBase):
+    pass
+
+class UserChallengeBookOfYear(UserChallengeBookOfYearBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_personal_data.py =====
+
+from pydantic import BaseModel, EmailStr
+from datetime import datetime
+
+class UserPersonalDataBase(BaseModel):
+    username: str
+    email: EmailStr
+    password_hash: str
+    agreement_accepted: bool = False
+    profile_photo: str | None = None
+
+class UserPersonalDataCreate(UserPersonalDataBase):
+    pass
+
+class UserVerifyEmail(BaseModel):
+    email: EmailStr
+    code: str
+
+class UserPersonalData(UserPersonalDataBase):
+    id: int
+    registered_at: datetime
+    updated_at: datetime
+    is_verified: bool
+
+    class Config:
+        from_attributes = True
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_reading_records.py =====
+
+from pydantic import BaseModel
+from datetime import date
+
+class UserReadingRecordBase(BaseModel):
+    start_date: date | None = None
+    end_date: date | None = None
+    result: str
+    comment: str | None = None
+
+class UserReadingRecordCreate(UserReadingRecordBase):
+    pass
+
+class UserReadingRecord(UserReadingRecordBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_statistics.py =====
+
+from pydantic import BaseModel
+
+class UserStatisticsBase(BaseModel):
+    books_in_library: int = 0
+    books_read: int = 0
+    books_favorites: int = 0
+    favorite_author: str | None = None
+    favorite_genre: str | None = None
+
+class UserStatisticsCreate(UserStatisticsBase):
+    pass
+
+class UserStatistics(UserStatisticsBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_top_characters.py =====
+
+from pydantic import BaseModel
+
+class UserTopCharactersBase(BaseModel):
+    top_1: str | None = None
+    top_2: str | None = None
+    top_3: str | None = None
+    top_4: str | None = None
+    top_5: str | None = None
+
+class UserTopCharactersCreate(UserTopCharactersBase):
+    pass
+
+class UserTopCharacters(UserTopCharactersBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\__init__.py =====
 
 
 
@@ -3236,7 +6754,6 @@ for root, dirs, files in os.walk(project_root):
                         out.write(f.read())
                 except Exception as e:
                     out.write(f"[Ошибка чтения файла: {e}]")
-
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\README.md =====
 

@@ -92,6 +92,13 @@ def get_notes(db: Session, skip: int = 0, limit: int = 100):
 def get_note(db: Session, note_id: int):
     return db.query(UserBookNote).filter(UserBookNote.id == note_id).first()
 
+def delete_note(db: Session, note_id: int):
+    obj = db.query(UserBookNote).filter(UserBookNote.id == note_id).first()
+    if obj:
+        db.delete(obj)
+        db.commit()
+        return True
+    return False
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\crud\users_book_quotes.py =====
 
@@ -112,26 +119,50 @@ def get_quotes(db: Session, skip: int = 0, limit: int = 100):
 def get_quote(db: Session, quote_id: int):
     return db.query(UserBookQuote).filter(UserBookQuote.id == quote_id).first()
 
+def delete_quote(db: Session, quote_id: int):
+    obj = db.query(UserBookQuote).filter(UserBookQuote.id == quote_id).first()
+    if obj:
+        db.delete(obj)
+        db.commit()
+        return True
+    return False
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\crud\users_book_rating.py =====
 
+# app/crud/users_book_rating.py
 from sqlalchemy.orm import Session
 from app.models.users_book_rating import UserBookRating
 from app.schemas.users_book_rating import UserBookRatingCreate
 
+
 def create_rating(db: Session, rating: UserBookRatingCreate):
-    db_rating = UserBookRating(**rating.dict())
-    db.add(db_rating)
-    db.commit()
-    db.refresh(db_rating)
-    return db_rating
+    # Ищем, есть ли уже рейтинг у этого отзыва
+    existing_rating = db.query(UserBookRating).filter(UserBookRating.review_id == rating.review_id).first()
+
+    if existing_rating:
+        # ОБНОВЛЕНИЕ: Если нашли, меняем поля
+        rating_data = rating.dict(exclude_unset=True)
+        for key, value in rating_data.items():
+            setattr(existing_rating, key, value)
+
+        db.commit()
+        db.refresh(existing_rating)
+        return existing_rating
+    else:
+        # СОЗДАНИЕ: Если не нашли, создаем новый
+        db_rating = UserBookRating(**rating.dict())
+        db.add(db_rating)
+        db.commit()
+        db.refresh(db_rating)
+        return db_rating
+
 
 def get_ratings(db: Session, skip: int = 0, limit: int = 100):
     return db.query(UserBookRating).offset(skip).limit(limit).all()
 
+
 def get_rating(db: Session, rating_id: int):
     return db.query(UserBookRating).filter(UserBookRating.id == rating_id).first()
-
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\crud\users_book_review.py =====
 
@@ -145,6 +176,7 @@ from app.models.books_editions import BookEdition
 from app.models.books_categories import BookCategory
 from app.schemas.custom_book import BookManualCreate
 from app.models.genre import Genre
+from app.models.users_book_review_genres import UserBookReviewGenre
 
 def create_review(db: Session, review: UserBookReviewCreate) -> UserBookReview:
     db_review = UserBookReview(**review.dict())
@@ -254,12 +286,56 @@ def get_review_detail(db: Session, review_id: int):
             joinedload(UserBookReview.rating),
             joinedload(UserBookReview.quotes),
             joinedload(UserBookReview.notes),
-            # Для жанров сложнее, так как это many-to-many через таблицу связку
             joinedload(UserBookReview.genres).joinedload(UserBookReviewGenre.genre)
         )
         .filter(UserBookReview.id == review_id)
         .first()
     )
+
+
+def update_review_category(db: Session, review_id: int, category_name: str):
+    # 1. Ищем сам отзыв
+    review = db.query(UserBookReview).filter(UserBookReview.id == review_id).first()
+    if not review:
+        return None
+
+    # 2. Ищем ID категории по названию (например "Читаю" -> id=2)
+    category = db.query(BookCategory).filter(BookCategory.name == category_name).first()
+    if not category:
+        # Если такой категории нет в базе, ничего не делаем (или можно вернуть ошибку)
+        return None
+
+    # 3. Обновляем
+    review.category_id = category.id
+    db.commit()
+    db.refresh(review)
+    return review
+
+
+def update_review_genres(db: Session, review_id: int, genre_names: list[str]):
+    # 1. Удаляем ВСЕ текущие жанры у этого отзыва
+    db.query(UserBookReviewGenre).filter(UserBookReviewGenre.review_id == review_id).delete()
+
+    # 2. Если список пустой, просто сохраняем удаление
+    if not genre_names:
+        db.commit()
+        return []
+
+    # 3. Ищем ID жанров по их названиям
+    # (SELECT * FROM genres WHERE name IN (...))
+    genres = db.query(Genre).filter(Genre.name.in_(genre_names)).all()
+
+    # 4. Создаем новые связи
+    new_entries = []
+    for genre in genres:
+        entry = UserBookReviewGenre(review_id=review_id, genre_id=genre.id)
+        db.add(entry)
+        new_entries.append(entry)
+
+    db.commit()
+
+    # Возвращаем список объектов жанров (для удобства, если нужно)
+    return genres
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\crud\users_book_review_genres.py =====
 
