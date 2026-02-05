@@ -27,7 +27,7 @@
       },
       "androidStatusBar": {
         "backgroundColor": "transparent",
-        "barStyle": "dark-content",
+        "barStyle": "light-content",
         "translucent": true
       },
       "edgeToEdgeEnabled": true,
