@@ -75,6 +75,14 @@ export default function AddBookModal({ visible, onClose, onSearch }) {
               />
 
               <RedButton
+                name="Найти по штрихкоду"
+                onPress={() => {
+                  onClose();
+                  // navigation.navigate("BookSearch"); // Убедись, что имя совпадает с App.js
+                }}
+              />
+
+              <RedButton
                 name="Добавить вручную"
                 onPress={() => {
                   onClose(); // Сначала закрываем меню
