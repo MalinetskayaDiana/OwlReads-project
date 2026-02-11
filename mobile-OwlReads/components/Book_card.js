@@ -62,7 +62,7 @@ export const BookCard = ({
 }) => {
   return (
     <CardContainer onPress={onPress}>
-      <CoverImage source={cover} resizeMode="cover" />
+      <CoverImage source={cover} resizeMode="contain" />
       <InfoBlock>
         <View style={{ alignSelf: 'flex-end' }}>
           <TextBox text={category} color={categorycolor}/>

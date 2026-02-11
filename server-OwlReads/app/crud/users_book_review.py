@@ -68,21 +68,18 @@ def get_user_library(db: Session, user_id: int, skip: int = 0, limit: int = 100)
     )
 
 def create_manual_book_review(db: Session, user_id: int, data: BookManualCreate):
-    # 1. Ищем категорию (она должна существовать)
+    # 1. Ищем категорию
     category = db.query(BookCategory).filter(BookCategory.name == data.category_name).first()
     if not category:
-        # Если категории нет, можно либо вернуть ошибку, либо создать дефолтную.
-        # Для надежности вернем None, фронт должен слать правильные названия.
         return None
 
     # 2. Создаем Литературное произведение
-    # (В будущем здесь можно добавить проверку: если такое название+автор есть, не создавать дубль)
     new_work = LiteratureWork(
         title=data.title,
         author=data.author
     )
     db.add(new_work)
-    db.flush()  # flush позволяет получить id созданного объекта до commit
+    db.flush()
 
     # 3. Создаем Издание книги
     new_edition = BookEdition(
@@ -91,12 +88,13 @@ def create_manual_book_review(db: Session, user_id: int, data: BookManualCreate)
         year=data.year,
         language=data.language,
         description=data.description,
-        cover_url=data.cover_url
+        cover_url=data.cover_url,
+        isbn=data.isbn  # <--- ТЕПЕРЬ ISBN БУДЕТ СОХРАНЯТЬСЯ В БАЗУ
     )
     db.add(new_edition)
     db.flush()
 
-    # 4. Создаем Отзыв пользователя (связь)
+    # 4. Создаем Отзыв пользователя
     new_review = UserBookReview(
         user_id=user_id,
         book_id=new_edition.id,

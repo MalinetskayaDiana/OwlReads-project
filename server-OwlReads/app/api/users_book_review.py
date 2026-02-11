@@ -148,6 +148,7 @@ def read_review_detail(review_id: int, db: Session = Depends(get_db)):
             year=review.book.year,
             description=review.book.description,
             cover_url=review.book.cover_url,
+            isbn=review.book.isbn,
             category_name=review.category.name if review.category else "Без категории",
             rating=review.rating,  # Pydantic сам обработает None
             quotes=review.quotes if review.quotes else [],

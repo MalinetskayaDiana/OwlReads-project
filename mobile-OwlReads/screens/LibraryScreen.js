@@ -149,7 +149,7 @@ export default function LibraryScreen() {
             keyExtractor={(item) => String(item.review_id)}
             renderItem={({ item }) => (
               <BookCard
-                cover={item.cover_url ? { uri: item.cover_url } : require("../assets/cover.png")}
+                cover={item.cover_url ? { uri: item.cover_url } : require("../assets/default_cover_book.png")}
                 category={item.category_name}
                 categorycolor={item.category_color}
                 title={item.title}
@@ -189,8 +189,8 @@ export default function LibraryScreen() {
             <Circle />
             <OverlayContent>
               <OverlayCover 
-                source={selectedBook.cover_url ? { uri: selectedBook.cover_url } : require("../assets/cover.png")} 
-                resizeMode="cover" 
+                source={selectedBook.cover_url ? { uri: selectedBook.cover_url } : require("../assets/default_cover_book.png")} 
+                resizeMode="contain" 
               />
 
               <View style={{ alignSelf: 'center' }}>

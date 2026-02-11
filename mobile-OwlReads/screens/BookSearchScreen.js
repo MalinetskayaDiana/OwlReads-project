@@ -230,7 +230,7 @@ export default function SearchBookScreen() {
                 {item.cover ? (
                   <BookCover source={{ uri: item.cover }} resizeMode="cover" />
                 ) : (
-                  <BookCover source={require("../assets/cover.png")} resizeMode="cover" />
+                  <BookCover source={require("../assets/default_cover_book.png")} resizeMode="cover" />
                 )}
                 
                 <BookInfo>

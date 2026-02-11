@@ -9,4 +9,5 @@ class BookManualCreate(BaseModel):
     language: Optional[str] = None
     description: Optional[str] = None
     cover_url: Optional[str] = None
-    category_name: str  # Например: "Читаю", "Прочитано"
+    category_name: str
+    isbn: Optional[str] = None

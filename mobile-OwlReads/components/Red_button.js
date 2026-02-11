@@ -6,7 +6,6 @@ import { LinearGradient } from "expo-linear-gradient";
 
 const GradientWrapper = styled(LinearGradient)`
   border-radius: 14px;
-  margin-horizontal: 32px;
   
   shadow-color: #000;
   shadow-offset: 0px 4px;
@@ -14,7 +13,7 @@ const GradientWrapper = styled(LinearGradient)`
   shadow-radius: 4px;
 
   elevation: 6;
-  width: 100%;
+  align-self: stretch;
 `;
 
 const ButtonContainer = styled(TouchableOpacity)`

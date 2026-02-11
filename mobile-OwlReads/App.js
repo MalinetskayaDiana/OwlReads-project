@@ -15,6 +15,7 @@ import BookScreen from "./screens/BookScreen";
 import AddBookModal from "./components/Add_book_modal";
 import AddBookManualScreen from "./screens/AddBookManualScreen";
 import BookSearchScreen from "./screens/BookSearchScreen";
+import BarcodeScannerScreen from "./screens/BarcodeScannerScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -90,6 +91,10 @@ export default function App() {
         <Stack.Screen
           name="Account"
           component={AccountScreen}
+          options={{ animation: "none" }} />
+        <Stack.Screen
+          name="BarcodeScanner"
+          component={BarcodeScannerScreen}
           options={{ animation: "none" }} />
       </Stack.Navigator>
     </NavigationContainer>

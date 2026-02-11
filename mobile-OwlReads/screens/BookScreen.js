@@ -69,7 +69,6 @@ const CoverImage = styled.Image`
   height: 160px;
   width: 110px;
   border-radius: 7px;
-  background-color: #e0e0e0;
 `;
 
 const InfoBlock = styled.View`
@@ -320,7 +319,7 @@ export default function BookScreen() {
             {bookData?.cover_url ? (
               <CoverImage source={{ uri: bookData.cover_url }} resizeMode="cover" />
             ) : (
-              <CoverImage source={require("../assets/cover.png")} resizeMode="cover" />
+              <CoverImage source={require("../assets/default_cover_book.png")} resizeMode="contain" />
             )}
 
             <InfoBlock>
@@ -451,6 +450,18 @@ export default function BookScreen() {
             }
             return null;
           })}
+
+          {bookData?.isbn ? (
+            <View style={{ marginTop: 10, marginBottom: 20, alignItems: "center", opacity: 0.5 }}>
+              <Text style={{
+                fontFamily: "Inter-Regular",
+                fontSize: 10,
+                color: "#2F2017"
+              }}>
+                ISBN: {bookData.isbn}
+              </Text>
+            </View>
+          ) : null}
         </ScrollView>
 
         {/* --- Модалка жанров --- */}

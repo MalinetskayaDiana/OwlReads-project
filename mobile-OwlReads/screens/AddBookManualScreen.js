@@ -111,6 +111,7 @@ export default function AddBookManualScreen() {
   const [year, setYear] = useState(prefilledBook?.year ? String(prefilledBook.year) : "");
   const [language, setLanguage] = useState(prefilledBook?.language || "");
   const [description, setDescription] = useState(prefilledBook?.description || "");
+  const [isbn, setIsbn] = useState(prefilledBook?.isbn || "");
   
   // Категории
   const categories = ["Читаю", "Хочу прочитать", "Прочитано", "Брошено", "Любимые"];
@@ -177,6 +178,7 @@ export default function AddBookManualScreen() {
         year: year ? parseInt(year) : null,
         language: language,
         description: description,
+        isbn: isbn,
         // Если ссылка внешняя (http) - отправляем. Если локальная (file://) - пока null.
         cover_url: coverUri && coverUri.startsWith('http') ? coverUri : null 
       };
@@ -275,6 +277,13 @@ export default function AddBookManualScreen() {
           <SectionTitle>Дополнительно</SectionTitle>
           <FormContainer>
             <InputField 
+              placeholder="ISBN (Штрихкод)" 
+              value={isbn} 
+              onChangeText={setIsbn} 
+              keyboardType="numeric"
+              style={{ width: 'auto' }}
+            />
+            <InputField 
               placeholder="Количество страниц" 
               value={pages} 
               onChangeText={setPages} 
@@ -304,14 +313,13 @@ export default function AddBookManualScreen() {
           </FormContainer>
 
           {/* Кнопка сохранения */}
-          <View style={{ marginTop: 10 }}>
+          <View style={{ marginTop: 10,  marginHorizontal: 32}}>
             {loading ? (
               <ActivityIndicator size="large" color="#890524" />
             ) : (
               <RedButton 
                 name="Сохранить" 
                 onPress={handleSave} 
-                style={{ width: 'auto' }} // Фикс ширины
               />
             )}
           </View>

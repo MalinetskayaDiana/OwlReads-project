@@ -18,6 +18,9 @@ def get_literature_work(db: Session, work_id: int):
 def get_literature_works(db: Session, skip: int = 0, limit: int = 100):
     return db.query(LiteratureWork).offset(skip).limit(limit).all()
 
+def get_book_by_isbn(db: Session, isbn: str):
+    return db.query(BookEdition).filter(BookEdition.isbn == isbn).first()
+
 
 # --- BookEdition ---
 def create_book_edition(db: Session, edition: BookEditionCreate):

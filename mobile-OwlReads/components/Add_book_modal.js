@@ -43,14 +43,11 @@ export default function AddBookModal({ visible, onClose, onSearch }) {
 
   // Логика для затемнения нижнего бара Android
   useEffect(() => {
-    if (Platform.OS === 'android') {
-      if (visible) {
-        NavigationBar.setBackgroundColorAsync("rgba(47, 32, 23, 0.6)");
-      } else {
-        NavigationBar.setBackgroundColorAsync("#D7C1AB");
-      }
-    }
-  }, [visible]);
+  if (Platform.OS === 'android') {
+    // Вместо цвета фона меняем только цвет иконок (светлые/темные)
+    NavigationBar.setButtonStyleAsync(visible ? "light" : "dark");
+  }
+}, [visible]);
 
   return (
     <Modal
@@ -65,12 +62,20 @@ export default function AddBookModal({ visible, onClose, onSearch }) {
           <TouchableWithoutFeedback>
             <MenuContainer>
               <MenuTitle>Добавить книгу</MenuTitle>
-
+              
               <RedButton
                 name="Найти книгу"
                 onPress={() => {
                   onClose();
                   navigation.navigate("BookSearch"); // Убедись, что имя совпадает с App.js
+                }}
+              />
+
+              <RedButton
+                name="Найти по штрихкоду"
+                onPress={() => {
+                  onClose(); // Сначала закрываем меню
+                  navigation.navigate("BarcodeScanner"); // Потом переходим
                 }}
               />
 

@@ -50,6 +50,7 @@ class BookReviewDetail(BaseModel):
     year: Optional[int] = None
     description: Optional[str] = None
     cover_url: Optional[str] = None
+    isbn: Optional[str] = None
 
     # Данные отзыва
     category_name: str

@@ -43,6 +43,10 @@ class BookSearchResponse(BaseModel):
     author: str
     cover_url: Optional[str] = None
     year: Optional[int] = None
+    isbn: Optional[str] = None
+    description: Optional[str] = None
+    pages: Optional[int] = None
+    language: Optional[str] = None
 
     # Поле, чтобы фронт понимал, что это книга из нашей БД
     source: str = "local"
