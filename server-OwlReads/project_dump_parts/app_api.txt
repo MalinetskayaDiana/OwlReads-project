@@ -383,18 +383,7 @@ def read_user_library(user_id: int, skip: int = 0, limit: int = 100, db: Session
         book_author = review.book.work.author if review.book and review.book.work else "Неизвестный автор"
         cover = review.book.cover_url if review.book else None
         cat_name = review.category.name if review.category else "Без категории"
-
-        # Логика цвета
-        color = "#AB66FF"  # Дефолтный
-        if cat_name == "Хочу прочитать":
-            color = "#66A3FF"
-        elif cat_name == "Читаю":
-            color = "#FFB066"
-        elif cat_name == "Брошено":
-            color = "#FF6666"
-        elif cat_name == "Любимые":
-            color = "#FF66B3"
-
+        cat_color = review.category.color if review.category else "#AB66FF"
         rating_val = review.rating.total_rating if review.rating else 0
 
         results.append(LibraryBookRead(
@@ -404,7 +393,7 @@ def read_user_library(user_id: int, skip: int = 0, limit: int = 100, db: Session
             author=book_author,
             cover_url=cover,
             category_name=cat_name,
-            category_color=color,
+            category_color=cat_color,
             rating=rating_val
         ))
     return results
