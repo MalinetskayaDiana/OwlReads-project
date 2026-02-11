@@ -76,6 +76,7 @@ export default function AddBookModal({ visible, onClose, onSearch }) {
                 onPress={() => {
                   onClose(); // Сначала закрываем меню
                   navigation.navigate("BarcodeScanner"); // Потом переходим
+
                 }}
               />
 

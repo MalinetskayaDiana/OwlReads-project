@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { View, Pressable, Alert, ActivityIndicator } from "react-native";
+import { useNavigation } from "@react-navigation/native";
 import styled from "styled-components/native";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import RedButton from "../components/Red_button";
@@ -64,8 +65,7 @@ export default function EntryScreen({ navigation }) {
   const [isLoading, setIsLoading] = useState(false);
 
   const handleForgotPassword = () => {
-    console.log("Переход на экран восстановления пароля");
-    // navigation.navigate("ForgotPassword");
+    navigation.navigate("ForgotPassword");
   };
 
   const handleLogin = async () => {
