@@ -15,6 +15,8 @@ from .users_personal_data import UserPersonalData
 from .users_book_review_genres import UserBookReviewGenre
 from .books_categories import BookCategory
 from .users_book_review import UserBookReview
+from .emotions import Emotion
+from .users_book_review_emotions import UserBookReviewEmotion
 
 __all__ = ["PopularQuote",
            "Genre",
@@ -32,4 +34,6 @@ __all__ = ["PopularQuote",
            "UserPersonalData",
            "UserBookReviewGenre",
            "BookCategory",
-           "UserBookReview"]
+           "UserBookReview",
+           "Emotion",
+           "UserBookReviewEmotion"]

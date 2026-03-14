@@ -1,3 +1,7 @@
+
+
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\alembic\env.py =====
+
 import os
 import sys
 from logging.config import fileConfig

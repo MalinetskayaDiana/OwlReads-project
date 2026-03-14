@@ -2,7 +2,6 @@ import React from 'react';
 import styled from 'styled-components/native';
 
 const Wrapper = styled.View`
-  margin-horizontal: 32px;
   width: 100%;
 `;
 
@@ -10,14 +9,17 @@ const Container = styled.View`
   background-color: #E8DFC9;
   border-radius: 14px;
   padding-horizontal: 14px;
-  padding-vertical: 7px;
+  /* Убираем фиксированный padding-vertical, если передана высота */
+  padding-vertical: ${props => (props.height ? 0 : 7)}px; 
+  height: ${props => (props.height ? props.height : 'auto')}px;
+  justify-content: center;
 `;
 
 const StyledInput = styled.TextInput`
   font-family: Inter-Regular;
-  font-size: 15px;
+  font-size: ${props => (props.fontSize ? props.fontSize : 15)}px;
   color: #2F2017;
-  width: 100%; /* Чтобы текст занимал всю ширину контейнера */
+  width: 100%;
 `;
 
 const ErrorText = styled.Text`
@@ -32,18 +34,21 @@ const InputField = ({
   onChangeText, 
   placeholder, 
   error, 
-  style,
-  ...props // <--- 1. Собираем все остальные пропсы (onSubmitEditing, keyboardType и т.д.)
+  style, 
+  containerHeight, // Новый проп
+  fontSize,        // Новый проп
+  ...props 
 }) => {
   return (
     <Wrapper style={style}>
-      <Container>
+      <Container height={containerHeight}>
         <StyledInput
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
           placeholderTextColor="rgba(47, 32, 23, 0.3)"
-          {...props} // <--- 2. Передаем их в TextInput
+          fontSize={fontSize}
+          {...props}
         />
       </Container>
       {error ? <ErrorText>{error}</ErrorText> : null}

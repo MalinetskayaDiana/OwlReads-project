@@ -7,6 +7,7 @@ from .users_book_rating import UserBookRating
 from .users_book_quotes import UserBookQuote
 from .users_book_notes import UserBookNote
 from .genre import GenreRead
+from .emotions import EmotionRead
 
 class UserBookReviewBase(BaseModel):
     user_id: int
@@ -54,12 +55,14 @@ class BookReviewDetail(BaseModel):
 
     # Данные отзыва
     category_name: str
+    category_color: str
 
     # Вложенные данные
     rating: Optional[UserBookRating] = None
     quotes: List[UserBookQuote] = []
     notes: List[UserBookNote] = []
     genres: List[GenreRead] = []
+    emotions: List[EmotionRead] = []
 
     class Config:
         from_attributes = True
@@ -69,3 +72,6 @@ class UserBookReviewUpdateCategory(BaseModel):
 
 class UserBookReviewUpdateGenres(BaseModel):
     genres: List[str]  # Список названий, например ["Фэнтези", "Роман"]
+
+class UserBookReviewUpdateEmotions(BaseModel):
+    emotions: List[str]  # Список названий, например ["Смех", "Вдохновение"]

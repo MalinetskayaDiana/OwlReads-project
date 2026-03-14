@@ -8,6 +8,7 @@ from app.db.session import get_db
 from app.schemas.users_book_review import UserBookReview, UserBookReviewCreate, LibraryBookRead, BookReviewDetail, UserBookReviewUpdateCategory, UserBookReviewUpdateGenres
 from app.crud import users_book_review as crud
 from app.schemas.custom_book import BookManualCreate
+from app.schemas.users_book_review import UserBookReviewUpdateEmotions
 
 # Настройка логгера для отладки ошибок 500
 logger = logging.getLogger(__name__)
@@ -62,6 +63,15 @@ def update_genres(
     crud.update_review_genres(db, review_id, update_data.genres)
     return {"message": "Genres updated successfully"}
 
+@router.put("/reviews/{review_id}/emotions")
+def update_emotions(
+    review_id: int,
+    update_data: UserBookReviewUpdateEmotions,
+    db: Session = Depends(get_db)
+):
+    crud.update_review_emotions(db, review_id, update_data.emotions)
+    return {"message": "Emotions updated successfully"}
+
 @router.delete("/reviews/{review_id}/", status_code=204)
 def delete_review(review_id: int, db: Session = Depends(get_db)):
     ok = crud.delete_review(db, review_id)
@@ -84,8 +94,8 @@ def add_book_manually(
 
 
 @router.get("/library/{user_id}", response_model=List[LibraryBookRead])
-def read_user_library(user_id: int, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    reviews = crud.get_user_library(db, user_id, skip, limit)
+def read_user_library(user_id: int, q: str = Query(None), skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    reviews = crud.get_user_library(db, user_id, skip, limit, search_query=q)
 
     results = []
     for review in reviews:
@@ -139,6 +149,12 @@ def read_review_detail(review_id: int, db: Session = Depends(get_db)):
                 if g.genre:
                     genres_list.append(g.genre)
 
+        emotions_list = []
+        if review.emotions_links:
+            for link in review.emotions_links:
+                if link.emotion:
+                    emotions_list.append(link.emotion)
+
         return BookReviewDetail(
             review_id=review.id,
             book_id=review.book.id,
@@ -150,10 +166,12 @@ def read_review_detail(review_id: int, db: Session = Depends(get_db)):
             cover_url=review.book.cover_url,
             isbn=review.book.isbn,
             category_name=review.category.name if review.category else "Без категории",
+            category_color=review.category.color if review.category else "#AB66FF",
             rating=review.rating,  # Pydantic сам обработает None
             quotes=review.quotes if review.quotes else [],
             notes=review.notes if review.notes else [],
-            genres=genres_list
+            genres=genres_list,
+            emotions=emotions_list
         )
     except Exception as e:
         # Логируем ошибку в консоль сервера, чтобы видеть причину 500

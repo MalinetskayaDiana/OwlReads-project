@@ -16,11 +16,11 @@ class UserBookReview(Base):
     user = relationship("UserPersonalData", back_populates="book_reviews")
     category = relationship("BookCategory", back_populates="reviews")
 
-    # !!! ВОТ ЭТОЙ СТРОКИ НЕ ХВАТАЛО !!!
     book = relationship("BookEdition")
 
     # многие ко многим через join-таблицу
     genres = relationship("UserBookReviewGenre", back_populates="review", cascade="all, delete-orphan")
+    emotions_links = relationship("UserBookReviewEmotion", back_populates="review", cascade="all, delete-orphan")
 
     # один к одному
     rating = relationship("UserBookRating", back_populates="review", uselist=False, cascade="all, delete-orphan")
