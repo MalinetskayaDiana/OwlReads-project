@@ -711,9 +711,12 @@ def read_entry(entry_id: int, db: Session = Depends(get_db)):
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
+from fastapi import UploadFile, File, Form
+import uuid
+import shutil
 
 from app.db.session import get_db
-from app.schemas.users_personal_data import UserPersonalData, UserPersonalDataCreate, UserVerifyEmail
+from app.schemas.users_personal_data import UserPersonalData, UserPersonalDataCreate, UserVerifyEmail, UserPersonalDataUpdate
 from app.crud import users_personal_data as crud
 
 router = APIRouter()
@@ -740,6 +743,40 @@ def verify_email(data: UserVerifyEmail, db: Session = Depends(get_db)):
 
     return {"message": "Email verified successfully"}
 
+@router.patch("/{user_id}/", response_model=UserPersonalData)
+def update_user_data(user_id: int, user_in: UserPersonalDataUpdate, db: Session = Depends(get_db)):
+    user = crud.update_user(db, user_id=user_id, obj_in=user_in)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+@router.post("/{user_id}/avatar")
+async def update_avatar(
+    user_id: int,
+    preset_name: str = Form(None), # Для встроенных иконок
+    file: UploadFile = File(None), # Для загрузки своего фото
+    db: Session = Depends(get_db)
+):
+    user = crud.get_user_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if file:
+        # Сохраняем файл, как мы делали с обложками книг
+        file_extension = file.filename.split(".")[-1]
+        file_name = f"avatar_{uuid.uuid4()}.{file_extension}"
+        file_path = f"uploads/{file_name}"
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        user.profile_photo = f"/static/{file_name}"
+    elif preset_name:
+        # Если выбрана встроенная иконка, просто сохраняем её имя
+        user.profile_photo = preset_name
+
+    db.commit()
+    db.refresh(user)
+    return {"profile_photo": user.profile_photo}
+
 @router.get("/", response_model=List[UserPersonalData])
 def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return crud.get_users(db, skip=skip, limit=limit)
@@ -751,6 +788,13 @@ def read_user(user_id: int, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
+
+@router.delete("/{user_id}/", status_code=204)
+def delete_user_account(user_id: int, db: Session = Depends(get_db)):
+    success = crud.delete_user(db, user_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="User not found")
+    return None
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\users_reading_records.py =====
 

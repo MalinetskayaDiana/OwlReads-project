@@ -1941,9 +1941,12 @@ def read_entry(entry_id: int, db: Session = Depends(get_db)):
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
+from fastapi import UploadFile, File, Form
+import uuid
+import shutil
 
 from app.db.session import get_db
-from app.schemas.users_personal_data import UserPersonalData, UserPersonalDataCreate, UserVerifyEmail
+from app.schemas.users_personal_data import UserPersonalData, UserPersonalDataCreate, UserVerifyEmail, UserPersonalDataUpdate
 from app.crud import users_personal_data as crud
 
 router = APIRouter()
@@ -1970,6 +1973,40 @@ def verify_email(data: UserVerifyEmail, db: Session = Depends(get_db)):
 
     return {"message": "Email verified successfully"}
 
+@router.patch("/{user_id}/", response_model=UserPersonalData)
+def update_user_data(user_id: int, user_in: UserPersonalDataUpdate, db: Session = Depends(get_db)):
+    user = crud.update_user(db, user_id=user_id, obj_in=user_in)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+@router.post("/{user_id}/avatar")
+async def update_avatar(
+    user_id: int,
+    preset_name: str = Form(None), # Для встроенных иконок
+    file: UploadFile = File(None), # Для загрузки своего фото
+    db: Session = Depends(get_db)
+):
+    user = crud.get_user_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if file:
+        # Сохраняем файл, как мы делали с обложками книг
+        file_extension = file.filename.split(".")[-1]
+        file_name = f"avatar_{uuid.uuid4()}.{file_extension}"
+        file_path = f"uploads/{file_name}"
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        user.profile_photo = f"/static/{file_name}"
+    elif preset_name:
+        # Если выбрана встроенная иконка, просто сохраняем её имя
+        user.profile_photo = preset_name
+
+    db.commit()
+    db.refresh(user)
+    return {"profile_photo": user.profile_photo}
+
 @router.get("/", response_model=List[UserPersonalData])
 def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return crud.get_users(db, skip=skip, limit=limit)
@@ -1981,6 +2018,13 @@ def read_user(user_id: int, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
+
+@router.delete("/{user_id}/", status_code=204)
+def delete_user_account(user_id: int, db: Session = Depends(get_db)):
+    success = crud.delete_user(db, user_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="User not found")
+    return None
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\users_reading_records.py =====
 
@@ -2177,7 +2221,6 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
-
 
 def get_password_hash(password):
     return pwd_context.hash(password)
@@ -2662,11 +2705,12 @@ def get_entry(db: Session, entry_id: int):
 from sqlalchemy.orm import Session
 from app.models.users_personal_data import UserPersonalData
 from app.schemas.users_personal_data import UserPersonalDataCreate
+from app.schemas.users_personal_data import UserPersonalDataUpdate
 from passlib.context import CryptContext
 from app.utils.email import generate_verification_code, send_verification_email
+from app.core.security import verify_password
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 
 def create_user(db: Session, user: UserPersonalDataCreate):
     hashed_password = pwd_context.hash(user.password_hash)
@@ -2705,6 +2749,41 @@ def verify_user_email(db: Session, email: str, code: str):
 
     return False
 
+
+# app/crud/users_personal_data.py
+
+def update_user(db: Session, user_id: int, obj_in: UserPersonalDataUpdate):
+    db_user = db.query(UserPersonalData).filter(UserPersonalData.id == user_id).first()
+    if not db_user:
+        return None
+
+    update_data = obj_in.dict(exclude_unset=True)
+
+    # Если пользователь пытается сменить пароль
+    if "password" in update_data:
+        # 1. Проверяем, прислал ли он старый пароль
+        old_pwd = update_data.get("old_password")
+        if not old_pwd or not verify_password(old_pwd, db_user.password_hash):
+            # Если старый пароль неверный или не прислан, выбрасываем ошибку
+            from fastapi import HTTPException
+            raise HTTPException(status_code=400, detail="Incorrect old password")
+
+        # 2. Если проверка прошла, хешируем новый
+        db_user.password_hash = pwd_context.hash(update_data["password"])
+        # Удаляем пароли из словаря, чтобы цикл ниже не пытался их записать в базу напрямую
+        del update_data["password"]
+        if "old_password" in update_data:
+            del update_data["old_password"]
+
+    # Обновляем остальные поля (username, email и т.д.)
+    for field in update_data:
+        setattr(db_user, field, update_data[field])
+
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
 def get_users(db: Session, skip: int = 0, limit: int = 100):
     return db.query(UserPersonalData).offset(skip).limit(limit).all()
 
@@ -2715,6 +2794,14 @@ def get_user_by_id(db: Session, user_id: int):
 
 def get_user_by_email(db: Session, email: str):
     return db.query(UserPersonalData).filter(UserPersonalData.email == email).first()
+
+def delete_user(db: Session, user_id: int):
+    db_user = db.query(UserPersonalData).filter(UserPersonalData.id == user_id).first()
+    if db_user:
+        db.delete(db_user)
+        db.commit()
+        return True
+    return False
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\crud\users_reading_records.py =====
 
@@ -3668,6 +3755,7 @@ class UserChallengeBookOfYear(UserChallengeBookOfYearBase):
 
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
+from typing import Optional
 
 class UserPersonalDataBase(BaseModel):
     username: str
@@ -3691,6 +3779,15 @@ class UserPersonalData(UserPersonalDataBase):
 
     class Config:
         from_attributes = True
+
+# app/schemas/users_personal_data.py
+
+class UserPersonalDataUpdate(BaseModel):
+    username: Optional[str] = None
+    email: Optional[EmailStr] = None
+    old_password: Optional[str] = None
+    password: Optional[str] = None  # Передаем обычный пароль, захешируем в CRUD
+    profile_photo: Optional[str] = None
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_reading_records.py =====
 
@@ -5757,9 +5854,12 @@ def read_entry(entry_id: int, db: Session = Depends(get_db)):
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
+from fastapi import UploadFile, File, Form
+import uuid
+import shutil
 
 from app.db.session import get_db
-from app.schemas.users_personal_data import UserPersonalData, UserPersonalDataCreate, UserVerifyEmail
+from app.schemas.users_personal_data import UserPersonalData, UserPersonalDataCreate, UserVerifyEmail, UserPersonalDataUpdate
 from app.crud import users_personal_data as crud
 
 router = APIRouter()
@@ -5786,6 +5886,40 @@ def verify_email(data: UserVerifyEmail, db: Session = Depends(get_db)):
 
     return {"message": "Email verified successfully"}
 
+@router.patch("/{user_id}/", response_model=UserPersonalData)
+def update_user_data(user_id: int, user_in: UserPersonalDataUpdate, db: Session = Depends(get_db)):
+    user = crud.update_user(db, user_id=user_id, obj_in=user_in)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+@router.post("/{user_id}/avatar")
+async def update_avatar(
+    user_id: int,
+    preset_name: str = Form(None), # Для встроенных иконок
+    file: UploadFile = File(None), # Для загрузки своего фото
+    db: Session = Depends(get_db)
+):
+    user = crud.get_user_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if file:
+        # Сохраняем файл, как мы делали с обложками книг
+        file_extension = file.filename.split(".")[-1]
+        file_name = f"avatar_{uuid.uuid4()}.{file_extension}"
+        file_path = f"uploads/{file_name}"
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        user.profile_photo = f"/static/{file_name}"
+    elif preset_name:
+        # Если выбрана встроенная иконка, просто сохраняем её имя
+        user.profile_photo = preset_name
+
+    db.commit()
+    db.refresh(user)
+    return {"profile_photo": user.profile_photo}
+
 @router.get("/", response_model=List[UserPersonalData])
 def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return crud.get_users(db, skip=skip, limit=limit)
@@ -5797,6 +5931,13 @@ def read_user(user_id: int, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
+
+@router.delete("/{user_id}/", status_code=204)
+def delete_user_account(user_id: int, db: Session = Depends(get_db)):
+    success = crud.delete_user(db, user_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="User not found")
+    return None
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\users_reading_records.py =====
 
@@ -5993,7 +6134,6 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
-
 
 def get_password_hash(password):
     return pwd_context.hash(password)
@@ -6478,11 +6618,12 @@ def get_entry(db: Session, entry_id: int):
 from sqlalchemy.orm import Session
 from app.models.users_personal_data import UserPersonalData
 from app.schemas.users_personal_data import UserPersonalDataCreate
+from app.schemas.users_personal_data import UserPersonalDataUpdate
 from passlib.context import CryptContext
 from app.utils.email import generate_verification_code, send_verification_email
+from app.core.security import verify_password
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 
 def create_user(db: Session, user: UserPersonalDataCreate):
     hashed_password = pwd_context.hash(user.password_hash)
@@ -6521,6 +6662,41 @@ def verify_user_email(db: Session, email: str, code: str):
 
     return False
 
+
+# app/crud/users_personal_data.py
+
+def update_user(db: Session, user_id: int, obj_in: UserPersonalDataUpdate):
+    db_user = db.query(UserPersonalData).filter(UserPersonalData.id == user_id).first()
+    if not db_user:
+        return None
+
+    update_data = obj_in.dict(exclude_unset=True)
+
+    # Если пользователь пытается сменить пароль
+    if "password" in update_data:
+        # 1. Проверяем, прислал ли он старый пароль
+        old_pwd = update_data.get("old_password")
+        if not old_pwd or not verify_password(old_pwd, db_user.password_hash):
+            # Если старый пароль неверный или не прислан, выбрасываем ошибку
+            from fastapi import HTTPException
+            raise HTTPException(status_code=400, detail="Incorrect old password")
+
+        # 2. Если проверка прошла, хешируем новый
+        db_user.password_hash = pwd_context.hash(update_data["password"])
+        # Удаляем пароли из словаря, чтобы цикл ниже не пытался их записать в базу напрямую
+        del update_data["password"]
+        if "old_password" in update_data:
+            del update_data["old_password"]
+
+    # Обновляем остальные поля (username, email и т.д.)
+    for field in update_data:
+        setattr(db_user, field, update_data[field])
+
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
 def get_users(db: Session, skip: int = 0, limit: int = 100):
     return db.query(UserPersonalData).offset(skip).limit(limit).all()
 
@@ -6531,6 +6707,14 @@ def get_user_by_id(db: Session, user_id: int):
 
 def get_user_by_email(db: Session, email: str):
     return db.query(UserPersonalData).filter(UserPersonalData.email == email).first()
+
+def delete_user(db: Session, user_id: int):
+    db_user = db.query(UserPersonalData).filter(UserPersonalData.id == user_id).first()
+    if db_user:
+        db.delete(db_user)
+        db.commit()
+        return True
+    return False
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\crud\users_reading_records.py =====
 
@@ -7484,6 +7668,7 @@ class UserChallengeBookOfYear(UserChallengeBookOfYearBase):
 
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
+from typing import Optional
 
 class UserPersonalDataBase(BaseModel):
     username: str
@@ -7507,6 +7692,15 @@ class UserPersonalData(UserPersonalDataBase):
 
     class Config:
         from_attributes = True
+
+# app/schemas/users_personal_data.py
+
+class UserPersonalDataUpdate(BaseModel):
+    username: Optional[str] = None
+    email: Optional[EmailStr] = None
+    old_password: Optional[str] = None
+    password: Optional[str] = None  # Передаем обычный пароль, захешируем в CRUD
+    profile_photo: Optional[str] = None
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\schemas\users_reading_records.py =====
 
@@ -8389,6 +8583,17 @@ const NavigationContainer = styled.View`
   bottom: 57px;
   left: 0;
   right: 0;
+
+  shadow-offset: 1px 2px;
+  shadow-opacity: 0.8;
+  shadow-radius: 4px;
+  margin-bottom: 10px; 
+  shadow-color: #230109;
+  shadow-offset: 0px 4px;
+  shadow-opacity: 0.3;
+  shadow-radius: 4px;
+
+  elevation: 6;
 `;
 
 export default function NavigationBar({ icons, onPressOverride }) {
@@ -10015,7 +10220,7 @@ export default function BookScreen() {
   useFocusEffect(
     useCallback(() => {
       fetchBookDetails();
-      
+
       const fetchEmotionsList = async () => {
         try {
           const response = await api.get("/api/emotions/");
@@ -10155,7 +10360,15 @@ export default function BookScreen() {
 
           <CardContainer>
             {bookData?.cover_url ? (
-              <CoverImage source={{ uri: bookData.cover_url }} resizeMode="cover" />
+              <CoverImage
+                source={
+                  bookData?.cover_url
+                    ? (bookData.cover_url.startsWith('http')
+                      ? { uri: bookData.cover_url }
+                      : { uri: `${api.defaults.baseURL}${bookData.cover_url}` })
+                    : require("../assets/default_cover_book.png")
+                }
+                resizeMode="cover" />
             ) : (
               <CoverImage source={require("../assets/default_cover_book.png")} resizeMode="contain" />
             )}
@@ -11738,7 +11951,7 @@ export default function HomeScreen() {
 import React, { useState, useCallback } from "react";
 import { View, FlatList, TouchableWithoutFeedback, ActivityIndicator, Text, TouchableOpacity, Image, Keyboard } from "react-native";
 import styled from "styled-components/native";
-import { useNavigation, useFocusEffect } from "@react-navigation/native"; 
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import NavigationBar from "../components/Navigation_bar";
@@ -11747,7 +11960,7 @@ import { TabBar } from "../components/Tab_bar";
 import { TextBox } from "../components/TextBox_props";
 import RatingStars from "../components/Rating_starts";
 import RedButton from "../components/Red_button";
-import AddBookModal from "../components/Add_book_modal"; 
+import AddBookModal from "../components/Add_book_modal";
 import InputField from "../components/Input_field";
 import api from "../src/api/client";
 
@@ -11843,11 +12056,11 @@ const OverlayAuthor = styled.Text`
 
 export default function LibraryScreen() {
   const navigation = useNavigation();
-  
+
   const [overlayVisible, setOverlayVisible] = useState(false);
   const [selectedBook, setSelectedBook] = useState(null);
   const [isAddBookModalVisible, setAddBookModalVisible] = useState(false);
-  
+
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -11896,6 +12109,12 @@ export default function LibraryScreen() {
     }
   };
 
+  const getFullCoverUrl = (cover) => {
+    if (!cover) return require("../assets/default_cover_book.png");
+    if (cover.startsWith('http')) return { uri: cover };
+    return { uri: `${api.defaults.baseURL}${cover}` };
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: "#D7C1AB" }}>
       <View style={{ flexDirection: "column", flex: 1 }}>
@@ -11904,8 +12123,8 @@ export default function LibraryScreen() {
 
         <SearchSection>
           <View style={{ flex: 1 }}>
-            <InputField 
-              placeholder="Поиск" 
+            <InputField
+              placeholder="Поиск"
               value={searchQuery}
               onChangeText={setSearchQuery}
               style={{ marginHorizontal: 0 }}
@@ -11916,15 +12135,15 @@ export default function LibraryScreen() {
             />
           </View>
           <SearchButton onPress={handlePressSearch}>
-            <Image 
-              source={require("../assets/search.png")} 
-              style={{ width: 22, height: 22, tintColor: '#FDF5E2' }} 
+            <Image
+              source={require("../assets/search.png")}
+              style={{ width: 22, height: 22, tintColor: '#FDF5E2' }}
             />
           </SearchButton>
         </SearchSection>
 
         <BookCountText>Всего книг: {books.length}</BookCountText>
-        
+
         {loading ? (
           <ActivityIndicator size="large" color="#890524" style={{ marginTop: 20 }} />
         ) : (
@@ -11933,7 +12152,7 @@ export default function LibraryScreen() {
             keyExtractor={(item) => String(item.review_id)}
             renderItem={({ item }) => (
               <BookCard
-                cover={item.cover_url ? { uri: item.cover_url } : require("../assets/default_cover_book.png")}
+                cover={getFullCoverUrl(item.cover_url)}
                 category={item.category_name}
                 categorycolor={item.category_color}
                 title={item.title}
@@ -11958,11 +12177,11 @@ export default function LibraryScreen() {
       <NavigationBar icons={icons} onPressOverride={handleNavigationPress} />
       {!isAddBookModalVisible && <TabBar color={"#D7C1AB"} />}
 
-      <AddBookModal 
+      <AddBookModal
         visible={isAddBookModalVisible}
         onClose={() => setAddBookModalVisible(false)}
-        onSearch={() => {setAddBookModalVisible(false); navigation.navigate("BookSearch");}}
-        onAdd={() => {setAddBookModalVisible(false); navigation.navigate("BookManualAdd");}}
+        onSearch={() => { setAddBookModalVisible(false); navigation.navigate("BookSearch"); }}
+        onAdd={() => { setAddBookModalVisible(false); navigation.navigate("BookManualAdd"); }}
       />
 
       {/* ОВЕРЛЕЙ ТЕПЕРЬ С КОДОМ */}
@@ -11971,9 +12190,9 @@ export default function LibraryScreen() {
           <Overlay>
             <Circle />
             <OverlayContent>
-              <OverlayCover 
-                source={selectedBook.cover_url ? { uri: selectedBook.cover_url } : require("../assets/default_cover_book.png")} 
-                resizeMode="contain" 
+              <OverlayCover
+                source={getFullCoverUrl(selectedBook.cover_url)} 
+                resizeMode="contain"
               />
               <View style={{ alignSelf: 'center' }}>
                 <TextBox text={selectedBook.category_name} color={selectedBook.category_color} />
@@ -11988,11 +12207,11 @@ export default function LibraryScreen() {
                   emptyImage={require('../assets/star_empty.png')}
                 />
               </View>
-              <RedButton 
-                name={"Подробнее"} 
+              <RedButton
+                name={"Подробнее"}
                 onPress={() => {
-                    setOverlayVisible(false);
-                    navigation.navigate("Book", { reviewId: selectedBook.review_id });
+                  setOverlayVisible(false);
+                  navigation.navigate("Book", { reviewId: selectedBook.review_id });
                 }}
               />
             </OverlayContent>

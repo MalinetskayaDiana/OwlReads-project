@@ -7,8 +7,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // Импорты компонентов
 import NavigationBar from "../components/Navigation_bar";
 import { TabBar } from "../components/Tab_bar";
-import AddBookModal from "../components/Add_book_modal"; 
+import AddBookModal from "../components/Add_book_modal";
 import api from "../src/api/client";
+
+const AVATAR_PRESETS = [
+  { id: 'user_icon', source: require("../assets/user_icon.png") },
+  { id: 'owl_icon_yellow', source: require("../assets/owl_icon_yellow.png") },
+  { id: 'owl_icon_red', source: require("../assets/owl_icon_red.png") },
+  { id: 'owl_icon_blue', source: require("../assets/owl_icon_blue.png") },
+  { id: 'owl_icon_green', source: require("../assets/owl_icon_green.png") },
+];
 
 // --- STYLED COMPONENTS (Без изменений) ---
 const OwlReadsTitle = styled.Text`
@@ -138,9 +146,9 @@ const StyledText = styled.Text`
 export default function AccountScreen() {
   const [menuVisible, setMenuVisible] = useState(false); // Меню профиля (три точки)
   const [isAddBookModalVisible, setAddBookModalVisible] = useState(false); // <--- 2. Состояние для меню добавления
-  
+
   const [loading, setLoading] = useState(true);
-  const navigation = useNavigation(); 
+  const navigation = useNavigation();
 
   const [userData, setUserData] = useState({
     username: "Загрузка...",
@@ -226,6 +234,15 @@ export default function AccountScreen() {
     }, [])
   );
 
+  const getAvatarSource = (photo) => {
+    if (!photo || photo === 'user_icon') return require("../assets/user_icon.png");
+    const preset = AVATAR_PRESETS.find(p => p.id === photo);
+    if (preset) return preset.source;
+    if (photo.startsWith('/static')) return { uri: `${api.defaults.baseURL}${photo}` };
+    return { uri: photo };
+  };
+
+
   if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: "#D7C1AB", justifyContent: "center", alignItems: "center" }}>
@@ -252,26 +269,25 @@ export default function AccountScreen() {
 
             {menuVisible && (
               <MenuContainer>
-                <MenuItem onPress={() => { console.log("Настройка профиля"); setMenuVisible(false); }}>
+                <MenuItem onPress={() => {
+                  setMenuVisible(false);
+                  navigation.navigate("Settings");
+                }}>
                   <MenuText>Настройка профиля</MenuText>
                 </MenuItem>
-                 <MenuItem onPress={handleLogout}>
+                <MenuItem onPress={handleLogout}>
                   <MenuTextLogout>Выйти из аккаунта</MenuTextLogout>
                 </MenuItem>
               </MenuContainer>
             )}
 
             <Image
-              source={
-                userData.profile_photo 
-                  ? { uri: userData.profile_photo } 
-                  : require("../assets/user_icon.png")
-              }
+              source={getAvatarSource(userData.profile_photo)}
               style={{ width: 150, height: 150, borderRadius: 75 }}
             />
           </UserContainer>
 
-          <View style ={{gap: 20}}>
+          <View style={{ gap: 20 }}>
             <View>
               <UserName>{userData.username}</UserName>
               <UserEmail>{userData.email}</UserEmail>
@@ -295,30 +311,30 @@ export default function AccountScreen() {
             </StatsContainer>
           </View>
 
-          <View style={{gap: 10, alignItems: "center"}}>
+          <View style={{ gap: 10, alignItems: "center" }}>
             <TextLabel>Больше всего прочитано книг в жанре</TextLabel>
-              <ContainerText>
-                <StyledText>{userStats.favorite_genre || "-"}</StyledText>
-              </ContainerText>
+            <ContainerText>
+              <StyledText>{userStats.favorite_genre || "-"}</StyledText>
+            </ContainerText>
           </View>
 
-          <View style={{gap: 10, alignItems: "center"}}>
+          <View style={{ gap: 10, alignItems: "center" }}>
             <TextLabel>Больше всего прочитано книг автора</TextLabel>
-              <ContainerText>
-                <StyledText>{userStats.favorite_author || "-"}</StyledText>
-              </ContainerText>
+            <ContainerText>
+              <StyledText>{userStats.favorite_author || "-"}</StyledText>
+            </ContainerText>
           </View>
-        
+
         </ScrollView>
 
         {/* 4. Передаем перехватчик в NavigationBar */}
         <NavigationBar icons={icons} onPressOverride={handleNavigationPress} />
-        
+
         {/* 5. Скрываем TabBar, если открыто меню добавления */}
         {!isAddBookModalVisible && <TabBar color={"#D7C1AB"} />}
 
         {/* 6. Само модальное окно */}
-        <AddBookModal 
+        <AddBookModal
           visible={isAddBookModalVisible}
           onClose={() => setAddBookModalVisible(false)}
           onSearch={handleSearchBook}
