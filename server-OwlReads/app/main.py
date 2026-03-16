@@ -1,4 +1,6 @@
 # app/main.py
+from fastapi.staticfiles import StaticFiles
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api import (
@@ -31,6 +33,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+if not os.path.exists("uploads"):
+    os.makedirs("uploads")
+
+# Добавьте это ПЕРЕД включением роутеров
+app.mount("/static", StaticFiles(directory="uploads"), name="static")
 
 # Единообразие: каждый сегмент — ровно один раз
 app.include_router(popular_quotes.router, prefix="/api/quotes", tags=["quotes"])

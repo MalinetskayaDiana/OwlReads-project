@@ -275,7 +275,7 @@ export default function BookScreen() {
   useFocusEffect(
     useCallback(() => {
       fetchBookDetails();
-      
+
       const fetchEmotionsList = async () => {
         try {
           const response = await api.get("/api/emotions/");
@@ -415,7 +415,15 @@ export default function BookScreen() {
 
           <CardContainer>
             {bookData?.cover_url ? (
-              <CoverImage source={{ uri: bookData.cover_url }} resizeMode="cover" />
+              <CoverImage
+                source={
+                  bookData?.cover_url
+                    ? (bookData.cover_url.startsWith('http')
+                      ? { uri: bookData.cover_url }
+                      : { uri: `${api.defaults.baseURL}${bookData.cover_url}` })
+                    : require("../assets/default_cover_book.png")
+                }
+                resizeMode="cover" />
             ) : (
               <CoverImage source={require("../assets/default_cover_book.png")} resizeMode="contain" />
             )}

@@ -385,9 +385,11 @@ def read_rating(rating_id: int, db: Session = Depends(get_db)):
 
 # app/api/users_book_review.py
 import logging
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, File, UploadFile, Form
 from sqlalchemy.orm import Session
 from typing import List
+import shutil
+import uuid
 
 from app.db.session import get_db
 from app.schemas.users_book_review import UserBookReview, UserBookReviewCreate, LibraryBookRead, BookReviewDetail, UserBookReviewUpdateCategory, UserBookReviewUpdateGenres
@@ -466,21 +468,49 @@ def delete_review(review_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/manual", status_code=201)
-def add_book_manually(
-        book_data: BookManualCreate,
-        user_id: int = Query(..., description="ID пользователя"),
+async def add_book_manually(
+        user_id: int = Query(...),
+        title: str = Form(...),
+        author: str = Form(...),
+        category_name: str = Form(...),
+        pages: int = Form(None),
+        year: int = Form(None),
+        language: str = Form(None),
+        description: str = Form(None),
+        isbn: str = Form(None),
+        cover_url: str = Form(None),
+        cover_file: UploadFile = File(None),  # Принимаем файл
         db: Session = Depends(get_db)
 ):
-    review = crud.create_manual_book_review(db, user_id, book_data)
-    if not review:
-        raise HTTPException(status_code=400, detail="Category not found or error creating book")
+    final_cover = cover_url
 
-    return {"message": "Book added successfully", "review_id": review.id}
+    # Если файл передан, сохраняем его локально
+    if cover_file:
+        file_extension = cover_file.filename.split(".")[-1]
+        file_name = f"{uuid.uuid4()}.{file_extension}"
+        file_path = f"uploads/{file_name}"
+
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(cover_file.file, buffer)
+
+        # Формируем URL (замените localhost на ваш IP для теста на телефоне)
+        final_cover = f"/static/{file_name}"
+
+    # Собираем данные обратно в объект для CRUD
+    from app.schemas.custom_book import BookManualCreate
+    book_data = BookManualCreate(
+        title=title, author=author, category_name=category_name,
+        pages=pages, year=year, language=language,
+        description=description, isbn=isbn, cover_url=final_cover
+    )
+
+    review = crud.create_manual_book_review(db, user_id, book_data)
+    return {"message": "Book added", "review_id": review.id}
 
 
 @router.get("/library/{user_id}", response_model=List[LibraryBookRead])
 def read_user_library(user_id: int, q: str = Query(None), skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    reviews = crud.get_user_library(db, user_id, skip, limit)
+    reviews = crud.get_user_library(db, user_id, skip, limit, search_query=q)
 
     results = []
     for review in reviews:

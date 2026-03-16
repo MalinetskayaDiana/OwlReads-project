@@ -670,6 +670,17 @@ const NavigationContainer = styled.View`
   bottom: 57px;
   left: 0;
   right: 0;
+
+  shadow-offset: 1px 2px;
+  shadow-opacity: 0.8;
+  shadow-radius: 4px;
+  margin-bottom: 10px; 
+  shadow-color: #230109;
+  shadow-offset: 0px 4px;
+  shadow-opacity: 0.3;
+  shadow-radius: 4px;
+
+  elevation: 6;
 `;
 
 export default function NavigationBar({ icons, onPressOverride }) {
@@ -1661,64 +1672,86 @@ export default function AddBookManualScreen() {
 
   // --- Сохранение книги ---
   const handleSave = async () => {
-    let newErrors = {};
-    let valid = true;
+  let newErrors = {};
+  let valid = true;
 
-    // Валидация
-    if (!title.trim()) {
-      newErrors.title = "Введите название книги*";
-      valid = false;
-    }
-    if (!author.trim()) {
-      newErrors.author = "Введите автора*";
-      valid = false;
-    }
-    if (!selectedCategory) {
-      Alert.alert("Ошибка", "Пожалуйста, выберите категорию");
-      valid = false;
+  // 1. Валидация (оставляем как была)
+  if (!title.trim()) {
+    newErrors.title = "Введите название книги*";
+    valid = false;
+  }
+  if (!author.trim()) {
+    newErrors.author = "Введите автора*";
+    valid = false;
+  }
+  if (!selectedCategory) {
+    Alert.alert("Ошибка", "Пожалуйста, выберите категорию");
+    valid = false;
+  }
+
+  setErrors(newErrors);
+  if (!valid) return;
+
+  setLoading(true);
+  try {
+    const userId = await AsyncStorage.getItem('userId');
+    if (!userId) {
+      Alert.alert("Ошибка", "Пользователь не авторизован.");
+      navigation.navigate("Entry");
+      return;
     }
 
-    setErrors(newErrors);
-    if (!valid) return;
+    // 2. Создаем FormData вместо обычного объекта
+    const formData = new FormData();
+    
+    // Добавляем текстовые поля
+    formData.append('title', title);
+    formData.append('author', author);
+    formData.append('category_name', selectedCategory);
+    if (pages) formData.append('pages', pages);
+    if (year) formData.append('year', year);
+    if (language) formData.append('language', language);
+    if (description) formData.append('description', description);
+    if (isbn) formData.append('isbn', isbn);
 
-    setLoading(true);
-    try {
-      // Получаем ID пользователя
-      const userId = await AsyncStorage.getItem('userId');
-      if (!userId) {
-        Alert.alert("Ошибка", "Пользователь не авторизован. Пожалуйста, войдите снова.");
-        navigation.navigate("Entry");
-        return;
+    // 3. Логика обложки
+    if (coverUri) {
+      if (coverUri.startsWith('http')) {
+        // Если это ссылка (например, из поиска Google), отправляем как строку
+        formData.append('cover_url', coverUri);
+      } else {
+        // Если это локальный файл (file://), упаковываем его для загрузки
+        const filename = coverUri.split('/').pop();
+        const match = /\.(\w+)$/.exec(filename);
+        const type = match ? `image/${match[1]}` : `image`;
+
+        formData.append('cover_file', {
+          uri: coverUri,
+          name: filename,
+          type: type,
+        });
       }
-
-      // Подготовка данных для бэкенда
-      const payload = {
-        title: title,
-        author: author,
-        category_name: selectedCategory,
-        pages: pages ? parseInt(pages) : null,
-        year: year ? parseInt(year) : null,
-        language: language,
-        description: description,
-        isbn: isbn,
-        // Если ссылка внешняя (http) - отправляем. Если локальная (file://) - пока null.
-        cover_url: coverUri && coverUri.startsWith('http') ? coverUri : null 
-      };
-
-      // Отправка запроса
-      await api.post(`/api/users_book_review/manual?user_id=${userId}`, payload);
-
-      Alert.alert("Успех", "Книга добавлена в вашу библиотеку!", [
-        { text: "OK", onPress: () => navigation.navigate("Library") }
-      ]);
-
-    } catch (error) {
-      console.error("Ошибка сохранения:", error);
-      Alert.alert("Ошибка", "Не удалось сохранить книгу. Проверьте соединение.");
-    } finally {
-      setLoading(false);
     }
-  };
+
+    // 4. Отправка запроса
+    // ВАЖНО: axios сам выставит нужные заголовки для FormData, если передать его вторым аргументом
+    await api.post(`/api/users_book_review/manual?user_id=${userId}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
+    Alert.alert("Успех", "Книга добавлена в вашу библиотеку!", [
+      { text: "OK", onPress: () => navigation.navigate("Library") }
+    ]);
+
+  } catch (error) {
+    console.error("Ошибка сохранения:", error);
+    Alert.alert("Ошибка", "Не удалось сохранить книгу. Проверьте бэкенд.");
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <View style={{ flex: 1, backgroundColor: "#D7C1AB" }}>
@@ -2274,7 +2307,7 @@ export default function BookScreen() {
   useFocusEffect(
     useCallback(() => {
       fetchBookDetails();
-      
+
       const fetchEmotionsList = async () => {
         try {
           const response = await api.get("/api/emotions/");
@@ -2414,7 +2447,15 @@ export default function BookScreen() {
 
           <CardContainer>
             {bookData?.cover_url ? (
-              <CoverImage source={{ uri: bookData.cover_url }} resizeMode="cover" />
+              <CoverImage
+                source={
+                  bookData?.cover_url
+                    ? (bookData.cover_url.startsWith('http')
+                      ? { uri: bookData.cover_url }
+                      : { uri: `${api.defaults.baseURL}${bookData.cover_url}` })
+                    : require("../assets/default_cover_book.png")
+                }
+                resizeMode="cover" />
             ) : (
               <CoverImage source={require("../assets/default_cover_book.png")} resizeMode="contain" />
             )}
@@ -3808,11 +3849,11 @@ export default function ForgotPasswordScreen({ navigation }) {
 
 ===== FILE: screens\HomeScreen.js =====
 
-// screens/HomeScreen.js
-import React, { useEffect, useState } from "react";
-import { View, Image } from "react-native";
+import React, { useEffect, useState, useCallback } from "react";
+import { View, Image, FlatList, TouchableOpacity, Text } from "react-native";
 import styled from "styled-components/native";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import Quote from "../components/Popular_quote";
 import NavigationBar from "../components/Navigation_bar";
@@ -3820,31 +3861,63 @@ import { TabBar } from "../components/Tab_bar";
 import AddBookModal from "../components/Add_book_modal";
 import api from "../src/api/client";
 
+// --- СТИЛИ ---
+
 const OwlReadsTitle = styled.Text`
   color: #fdf5e2;
   font-family: "Marck Script-Regular";
   font-size: 30px;
   font-weight: 400;
-  justify-content: center;
-  align-items: center;
   text-align: center;
   margin-top: 48px;
+`;
+
+const SectionTitle = styled.Text`
+  font-family: "Marck Script-Regular";
+  font-size: 25px;
+  color: #890524;
+  margin-left: 16px;
+  margin-top: 20px;
+  margin-bottom: 10px;
+`;
+
+const BookItem = styled(TouchableOpacity)`
+  width: 75px;
+  margin-right: 15px;
+  align-items: center;
+`;
+
+const BookCover = styled.Image`
+  width: 70px;
+  height: 100px;
+  border-radius: 5px;
+  background-color: #E8DFC9;
+`;
+
+const BookTitleSnippet = styled.Text`
+  font-family: "Inter-Regular";
+  font-size: 11px;
+  color: #2F2017;
+  margin-top: 5px;
+  text-align: center;
+  height: 30px;
 `;
 
 export default function HomeScreen() {
   const navigation = useNavigation();
   const [quote, setQuote] = useState(null);
-  
+  const [readingBooks, setReadingBooks] = useState([]); // Состояние для книг
   const [isModalVisible, setModalVisible] = useState(false);
 
   const icons = [
     { name: "home", source: require("../assets/home_active.png"), screen: "Home" },
     { name: "open_book", source: require("../assets/open_book.png"), screen: "Library" },
-    { name: "add_book", source: require("../assets/add_book.png"), screen: "AddBookModal" }, 
+    { name: "add_book", source: require("../assets/add_book.png"), screen: "AddBookModal" },
     { name: "message", source: require("../assets/message.png"), screen: "Chats" },
     { name: "user", source: require("../assets/user.png"), screen: "Account" },
   ];
 
+  // Загрузка случайной цитаты
   useEffect(() => {
     async function fetchQuote() {
       try {
@@ -3857,46 +3930,104 @@ export default function HomeScreen() {
     fetchQuote();
   }, []);
 
+  // Загрузка книг категории "Читаю"
+  // Используем useFocusEffect, чтобы список обновлялся, когда пользователь возвращается на главный экран
+  useFocusEffect(
+    useCallback(() => {
+      const fetchReadingBooks = async () => {
+        try {
+          const userId = await AsyncStorage.getItem('userId');
+          if (!userId) return;
+
+          // Вызываем ваш эндпоинт фильтрации по категории
+          const response = await api.get(`/api/users_book_review/users/${userId}/reviews/by_category`, {
+            params: { category_name: "Читаю" }
+          });
+          setReadingBooks(response.data);
+        } catch (error) {
+          console.error("Ошибка загрузки читаемых книг:", error);
+        }
+      };
+
+      fetchReadingBooks();
+    }, [])
+  );
+
   const handleNavigationPress = (screenName) => {
     if (screenName === "AddBookModal") {
-      setModalVisible(true); 
+      setModalVisible(true);
     } else {
-      navigation.navigate(screenName); 
+      navigation.navigate(screenName);
     }
-  };
-
-  const handleSearch = () => {
-    setModalVisible(false);
-    console.log("Идем искать книгу...");
-  };
-
-  const handleAddManual = () => {
-    setModalVisible(false);
-    console.log("Идем добавлять вручную...");
   };
 
   return (
     <View style={{ flex: 1, backgroundColor: "#D7C1AB" }}>
-      <View style={{ flexDirection: "column" }}>
-        <OwlReadsTitle>OwlReads</OwlReadsTitle>
-        <Image
-          source={require("../assets/Owl_and_bookshelves.png")}
-          style={{ width: 368, height: 149, resizeMode: "cover", marginBottom: -4, marginLeft: 25, zIndex: 1 }}
-        />
-        {quote && (
-          <Quote quote_text={quote.text} quote_author={`@${quote.book_title}`} />
-        )}
-      </View>
+      <FlatList
+        ListHeaderComponent={
+          <>
+            <View style={{ flexDirection: "column" }}>
+              <OwlReadsTitle>OwlReads</OwlReadsTitle>
+              <Image
+                source={require("../assets/Owl_and_bookshelves.png")}
+                style={{ width: 368, height: 149, resizeMode: "cover", marginBottom: -4, marginLeft: 25, zIndex: 1 }}
+              />
+              {quote && (
+                <Quote quote_text={quote.text} quote_author={`@${quote.book_title}`} />
+              )}
+            </View>
+
+            {/* Блок "Читаю сейчас" */}
+            {readingBooks.length > 0 && (
+              <View style={{ marginBottom: 20 }}>
+                <SectionTitle>Читаю сейчас</SectionTitle>
+                <FlatList
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  data={readingBooks}
+                  keyExtractor={(item) => item.id.toString()}
+                  contentContainerStyle={{ paddingLeft: 16, paddingRight: 16 }}
+                  // Внутри renderItem в HomeScreen.js
+                  renderItem={({ item }) => {
+                    const cover = item.book?.cover_url;
+                    const title = item.book?.work?.title || "Без названия";
+
+                    // Безопасная проверка baseURL
+                    const baseUrl = api.defaults.baseURL || "";
+                    const fullCoverUrl = cover
+                      ? (cover.startsWith('http') ? cover : `${baseUrl}${cover}`)
+                      : null;
+
+                    return (
+                      <BookItem onPress={() => navigation.navigate("Book", { reviewId: item.id })}>
+                        <BookCover
+                          source={fullCoverUrl ? { uri: fullCoverUrl } : require("../assets/default_cover_book.png")}
+                          resizeMode="cover"
+                        />
+                        <BookTitleSnippet numberOfLines={2}>
+                          {title}
+                        </BookTitleSnippet>
+                      </BookItem>
+                    );
+                  }}
+                />
+              </View>
+            )}
+          </>
+        }
+        data={[]} // Основной FlatList используем как контейнер со скроллом
+        renderItem={null}
+        contentContainerStyle={{ paddingBottom: 120 }}
+      />
 
       <NavigationBar icons={icons} onPressOverride={handleNavigationPress} />
-      
       <TabBar color={"#D7C1AB"} />
 
-      <AddBookModal 
+      <AddBookModal
         visible={isModalVisible}
         onClose={() => setModalVisible(false)}
-        onSearch={handleSearch}
-        onAdd={handleAddManual}
+        onSearch={() => { setModalVisible(false); navigation.navigate("BookSearch"); }}
+        onAdd={() => { setModalVisible(false); navigation.navigate("BookManualAdd"); }}
       />
     </View>
   );
@@ -3907,7 +4038,7 @@ export default function HomeScreen() {
 import React, { useState, useCallback } from "react";
 import { View, FlatList, TouchableWithoutFeedback, ActivityIndicator, Text, TouchableOpacity, Image, Keyboard } from "react-native";
 import styled from "styled-components/native";
-import { useNavigation, useFocusEffect } from "@react-navigation/native"; 
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import NavigationBar from "../components/Navigation_bar";
@@ -3916,7 +4047,7 @@ import { TabBar } from "../components/Tab_bar";
 import { TextBox } from "../components/TextBox_props";
 import RatingStars from "../components/Rating_starts";
 import RedButton from "../components/Red_button";
-import AddBookModal from "../components/Add_book_modal"; 
+import AddBookModal from "../components/Add_book_modal";
 import InputField from "../components/Input_field";
 import api from "../src/api/client";
 
@@ -4012,11 +4143,11 @@ const OverlayAuthor = styled.Text`
 
 export default function LibraryScreen() {
   const navigation = useNavigation();
-  
+
   const [overlayVisible, setOverlayVisible] = useState(false);
   const [selectedBook, setSelectedBook] = useState(null);
   const [isAddBookModalVisible, setAddBookModalVisible] = useState(false);
-  
+
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -4065,6 +4196,12 @@ export default function LibraryScreen() {
     }
   };
 
+  const getFullCoverUrl = (cover) => {
+    if (!cover) return require("../assets/default_cover_book.png");
+    if (cover.startsWith('http')) return { uri: cover };
+    return { uri: `${api.defaults.baseURL}${cover}` };
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: "#D7C1AB" }}>
       <View style={{ flexDirection: "column", flex: 1 }}>
@@ -4073,8 +4210,8 @@ export default function LibraryScreen() {
 
         <SearchSection>
           <View style={{ flex: 1 }}>
-            <InputField 
-              placeholder="Поиск" 
+            <InputField
+              placeholder="Поиск"
               value={searchQuery}
               onChangeText={setSearchQuery}
               style={{ marginHorizontal: 0 }}
@@ -4085,15 +4222,15 @@ export default function LibraryScreen() {
             />
           </View>
           <SearchButton onPress={handlePressSearch}>
-            <Image 
-              source={require("../assets/search.png")} 
-              style={{ width: 22, height: 22, tintColor: '#FDF5E2' }} 
+            <Image
+              source={require("../assets/search.png")}
+              style={{ width: 22, height: 22, tintColor: '#FDF5E2' }}
             />
           </SearchButton>
         </SearchSection>
 
         <BookCountText>Всего книг: {books.length}</BookCountText>
-        
+
         {loading ? (
           <ActivityIndicator size="large" color="#890524" style={{ marginTop: 20 }} />
         ) : (
@@ -4102,7 +4239,7 @@ export default function LibraryScreen() {
             keyExtractor={(item) => String(item.review_id)}
             renderItem={({ item }) => (
               <BookCard
-                cover={item.cover_url ? { uri: item.cover_url } : require("../assets/default_cover_book.png")}
+                cover={getFullCoverUrl(item.cover_url)}
                 category={item.category_name}
                 categorycolor={item.category_color}
                 title={item.title}
@@ -4127,11 +4264,11 @@ export default function LibraryScreen() {
       <NavigationBar icons={icons} onPressOverride={handleNavigationPress} />
       {!isAddBookModalVisible && <TabBar color={"#D7C1AB"} />}
 
-      <AddBookModal 
+      <AddBookModal
         visible={isAddBookModalVisible}
         onClose={() => setAddBookModalVisible(false)}
-        onSearch={() => {setAddBookModalVisible(false); navigation.navigate("BookSearch");}}
-        onAdd={() => {setAddBookModalVisible(false); navigation.navigate("BookManualAdd");}}
+        onSearch={() => { setAddBookModalVisible(false); navigation.navigate("BookSearch"); }}
+        onAdd={() => { setAddBookModalVisible(false); navigation.navigate("BookManualAdd"); }}
       />
 
       {/* ОВЕРЛЕЙ ТЕПЕРЬ С КОДОМ */}
@@ -4140,9 +4277,9 @@ export default function LibraryScreen() {
           <Overlay>
             <Circle />
             <OverlayContent>
-              <OverlayCover 
-                source={selectedBook.cover_url ? { uri: selectedBook.cover_url } : require("../assets/default_cover_book.png")} 
-                resizeMode="contain" 
+              <OverlayCover
+                source={getFullCoverUrl(selectedBook.cover_url)} 
+                resizeMode="contain"
               />
               <View style={{ alignSelf: 'center' }}>
                 <TextBox text={selectedBook.category_name} color={selectedBook.category_color} />
@@ -4157,11 +4294,11 @@ export default function LibraryScreen() {
                   emptyImage={require('../assets/star_empty.png')}
                 />
               </View>
-              <RedButton 
-                name={"Подробнее"} 
+              <RedButton
+                name={"Подробнее"}
                 onPress={() => {
-                    setOverlayVisible(false);
-                    navigation.navigate("Book", { reviewId: selectedBook.review_id });
+                  setOverlayVisible(false);
+                  navigation.navigate("Book", { reviewId: selectedBook.review_id });
                 }}
               />
             </OverlayContent>

@@ -728,7 +728,6 @@ import React from 'react';
 import styled from 'styled-components/native';
 
 const Wrapper = styled.View`
-  margin-horizontal: 32px;
   width: 100%;
 `;
 
@@ -736,14 +735,17 @@ const Container = styled.View`
   background-color: #E8DFC9;
   border-radius: 14px;
   padding-horizontal: 14px;
-  padding-vertical: 7px;
+  /* Убираем фиксированный padding-vertical, если передана высота */
+  padding-vertical: ${props => (props.height ? 0 : 7)}px; 
+  height: ${props => (props.height ? props.height : 'auto')}px;
+  justify-content: center;
 `;
 
 const StyledInput = styled.TextInput`
   font-family: Inter-Regular;
-  font-size: 15px;
+  font-size: ${props => (props.fontSize ? props.fontSize : 15)}px;
   color: #2F2017;
-  width: 100%; /* Чтобы текст занимал всю ширину контейнера */
+  width: 100%;
 `;
 
 const ErrorText = styled.Text`
@@ -758,18 +760,21 @@ const InputField = ({
   onChangeText, 
   placeholder, 
   error, 
-  style,
-  ...props // <--- 1. Собираем все остальные пропсы (onSubmitEditing, keyboardType и т.д.)
+  style, 
+  containerHeight, // Новый проп
+  fontSize,        // Новый проп
+  ...props 
 }) => {
   return (
     <Wrapper style={style}>
-      <Container>
+      <Container height={containerHeight}>
         <StyledInput
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
           placeholderTextColor="rgba(47, 32, 23, 0.3)"
-          {...props} // <--- 2. Передаем их в TextInput
+          fontSize={fontSize}
+          {...props}
         />
       </Container>
       {error ? <ErrorText>{error}</ErrorText> : null}
@@ -1796,64 +1801,86 @@ export default function AddBookManualScreen() {
 
   // --- Сохранение книги ---
   const handleSave = async () => {
-    let newErrors = {};
-    let valid = true;
+  let newErrors = {};
+  let valid = true;
 
-    // Валидация
-    if (!title.trim()) {
-      newErrors.title = "Введите название книги*";
-      valid = false;
-    }
-    if (!author.trim()) {
-      newErrors.author = "Введите автора*";
-      valid = false;
-    }
-    if (!selectedCategory) {
-      Alert.alert("Ошибка", "Пожалуйста, выберите категорию");
-      valid = false;
+  // 1. Валидация (оставляем как была)
+  if (!title.trim()) {
+    newErrors.title = "Введите название книги*";
+    valid = false;
+  }
+  if (!author.trim()) {
+    newErrors.author = "Введите автора*";
+    valid = false;
+  }
+  if (!selectedCategory) {
+    Alert.alert("Ошибка", "Пожалуйста, выберите категорию");
+    valid = false;
+  }
+
+  setErrors(newErrors);
+  if (!valid) return;
+
+  setLoading(true);
+  try {
+    const userId = await AsyncStorage.getItem('userId');
+    if (!userId) {
+      Alert.alert("Ошибка", "Пользователь не авторизован.");
+      navigation.navigate("Entry");
+      return;
     }
 
-    setErrors(newErrors);
-    if (!valid) return;
+    // 2. Создаем FormData вместо обычного объекта
+    const formData = new FormData();
+    
+    // Добавляем текстовые поля
+    formData.append('title', title);
+    formData.append('author', author);
+    formData.append('category_name', selectedCategory);
+    if (pages) formData.append('pages', pages);
+    if (year) formData.append('year', year);
+    if (language) formData.append('language', language);
+    if (description) formData.append('description', description);
+    if (isbn) formData.append('isbn', isbn);
 
-    setLoading(true);
-    try {
-      // Получаем ID пользователя
-      const userId = await AsyncStorage.getItem('userId');
-      if (!userId) {
-        Alert.alert("Ошибка", "Пользователь не авторизован. Пожалуйста, войдите снова.");
-        navigation.navigate("Entry");
-        return;
+    // 3. Логика обложки
+    if (coverUri) {
+      if (coverUri.startsWith('http')) {
+        // Если это ссылка (например, из поиска Google), отправляем как строку
+        formData.append('cover_url', coverUri);
+      } else {
+        // Если это локальный файл (file://), упаковываем его для загрузки
+        const filename = coverUri.split('/').pop();
+        const match = /\.(\w+)$/.exec(filename);
+        const type = match ? `image/${match[1]}` : `image`;
+
+        formData.append('cover_file', {
+          uri: coverUri,
+          name: filename,
+          type: type,
+        });
       }
-
-      // Подготовка данных для бэкенда
-      const payload = {
-        title: title,
-        author: author,
-        category_name: selectedCategory,
-        pages: pages ? parseInt(pages) : null,
-        year: year ? parseInt(year) : null,
-        language: language,
-        description: description,
-        isbn: isbn,
-        // Если ссылка внешняя (http) - отправляем. Если локальная (file://) - пока null.
-        cover_url: coverUri && coverUri.startsWith('http') ? coverUri : null 
-      };
-
-      // Отправка запроса
-      await api.post(`/api/users_book_review/manual?user_id=${userId}`, payload);
-
-      Alert.alert("Успех", "Книга добавлена в вашу библиотеку!", [
-        { text: "OK", onPress: () => navigation.navigate("Library") }
-      ]);
-
-    } catch (error) {
-      console.error("Ошибка сохранения:", error);
-      Alert.alert("Ошибка", "Не удалось сохранить книгу. Проверьте соединение.");
-    } finally {
-      setLoading(false);
     }
-  };
+
+    // 4. Отправка запроса
+    // ВАЖНО: axios сам выставит нужные заголовки для FormData, если передать его вторым аргументом
+    await api.post(`/api/users_book_review/manual?user_id=${userId}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
+    Alert.alert("Успех", "Книга добавлена в вашу библиотеку!", [
+      { text: "OK", onPress: () => navigation.navigate("Library") }
+    ]);
+
+  } catch (error) {
+    console.error("Ошибка сохранения:", error);
+    Alert.alert("Ошибка", "Не удалось сохранить книгу. Проверьте бэкенд.");
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <View style={{ flex: 1, backgroundColor: "#D7C1AB" }}>
@@ -3943,11 +3970,11 @@ export default function ForgotPasswordScreen({ navigation }) {
 
 ===== FILE: screens\HomeScreen.js =====
 
-// screens/HomeScreen.js
-import React, { useEffect, useState } from "react";
-import { View, Image } from "react-native";
+import React, { useEffect, useState, useCallback } from "react";
+import { View, Image, FlatList, TouchableOpacity, Text } from "react-native";
 import styled from "styled-components/native";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import Quote from "../components/Popular_quote";
 import NavigationBar from "../components/Navigation_bar";
@@ -3955,31 +3982,63 @@ import { TabBar } from "../components/Tab_bar";
 import AddBookModal from "../components/Add_book_modal";
 import api from "../src/api/client";
 
+// --- СТИЛИ ---
+
 const OwlReadsTitle = styled.Text`
   color: #fdf5e2;
   font-family: "Marck Script-Regular";
   font-size: 30px;
   font-weight: 400;
-  justify-content: center;
-  align-items: center;
   text-align: center;
   margin-top: 48px;
+`;
+
+const SectionTitle = styled.Text`
+  font-family: "Marck Script-Regular";
+  font-size: 25px;
+  color: #890524;
+  margin-left: 16px;
+  margin-top: 20px;
+  margin-bottom: 10px;
+`;
+
+const BookItem = styled(TouchableOpacity)`
+  width: 75px;
+  margin-right: 15px;
+  align-items: center;
+`;
+
+const BookCover = styled.Image`
+  width: 70px;
+  height: 100px;
+  border-radius: 5px;
+  background-color: #E8DFC9;
+`;
+
+const BookTitleSnippet = styled.Text`
+  font-family: "Inter-Regular";
+  font-size: 11px;
+  color: #2F2017;
+  margin-top: 5px;
+  text-align: center;
+  height: 30px;
 `;
 
 export default function HomeScreen() {
   const navigation = useNavigation();
   const [quote, setQuote] = useState(null);
-  
+  const [readingBooks, setReadingBooks] = useState([]); // Состояние для книг
   const [isModalVisible, setModalVisible] = useState(false);
 
   const icons = [
     { name: "home", source: require("../assets/home_active.png"), screen: "Home" },
     { name: "open_book", source: require("../assets/open_book.png"), screen: "Library" },
-    { name: "add_book", source: require("../assets/add_book.png"), screen: "AddBookModal" }, 
+    { name: "add_book", source: require("../assets/add_book.png"), screen: "AddBookModal" },
     { name: "message", source: require("../assets/message.png"), screen: "Chats" },
     { name: "user", source: require("../assets/user.png"), screen: "Account" },
   ];
 
+  // Загрузка случайной цитаты
   useEffect(() => {
     async function fetchQuote() {
       try {
@@ -3992,46 +4051,104 @@ export default function HomeScreen() {
     fetchQuote();
   }, []);
 
+  // Загрузка книг категории "Читаю"
+  // Используем useFocusEffect, чтобы список обновлялся, когда пользователь возвращается на главный экран
+  useFocusEffect(
+    useCallback(() => {
+      const fetchReadingBooks = async () => {
+        try {
+          const userId = await AsyncStorage.getItem('userId');
+          if (!userId) return;
+
+          // Вызываем ваш эндпоинт фильтрации по категории
+          const response = await api.get(`/api/users_book_review/users/${userId}/reviews/by_category`, {
+            params: { category_name: "Читаю" }
+          });
+          setReadingBooks(response.data);
+        } catch (error) {
+          console.error("Ошибка загрузки читаемых книг:", error);
+        }
+      };
+
+      fetchReadingBooks();
+    }, [])
+  );
+
   const handleNavigationPress = (screenName) => {
     if (screenName === "AddBookModal") {
-      setModalVisible(true); 
+      setModalVisible(true);
     } else {
-      navigation.navigate(screenName); 
+      navigation.navigate(screenName);
     }
-  };
-
-  const handleSearch = () => {
-    setModalVisible(false);
-    console.log("Идем искать книгу...");
-  };
-
-  const handleAddManual = () => {
-    setModalVisible(false);
-    console.log("Идем добавлять вручную...");
   };
 
   return (
     <View style={{ flex: 1, backgroundColor: "#D7C1AB" }}>
-      <View style={{ flexDirection: "column" }}>
-        <OwlReadsTitle>OwlReads</OwlReadsTitle>
-        <Image
-          source={require("../assets/Owl_and_bookshelves.png")}
-          style={{ width: 368, height: 149, resizeMode: "cover", marginBottom: -4, marginLeft: 25, zIndex: 1 }}
-        />
-        {quote && (
-          <Quote quote_text={quote.text} quote_author={`@${quote.book_title}`} />
-        )}
-      </View>
+      <FlatList
+        ListHeaderComponent={
+          <>
+            <View style={{ flexDirection: "column" }}>
+              <OwlReadsTitle>OwlReads</OwlReadsTitle>
+              <Image
+                source={require("../assets/Owl_and_bookshelves.png")}
+                style={{ width: 368, height: 149, resizeMode: "cover", marginBottom: -4, marginLeft: 25, zIndex: 1 }}
+              />
+              {quote && (
+                <Quote quote_text={quote.text} quote_author={`@${quote.book_title}`} />
+              )}
+            </View>
+
+            {/* Блок "Читаю сейчас" */}
+            {readingBooks.length > 0 && (
+              <View style={{ marginBottom: 20 }}>
+                <SectionTitle>Читаю сейчас</SectionTitle>
+                <FlatList
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  data={readingBooks}
+                  keyExtractor={(item) => item.id.toString()}
+                  contentContainerStyle={{ paddingLeft: 16, paddingRight: 16 }}
+                  // Внутри renderItem в HomeScreen.js
+                  renderItem={({ item }) => {
+                    const cover = item.book?.cover_url;
+                    const title = item.book?.work?.title || "Без названия";
+
+                    // Безопасная проверка baseURL
+                    const baseUrl = api.defaults.baseURL || "";
+                    const fullCoverUrl = cover
+                      ? (cover.startsWith('http') ? cover : `${baseUrl}${cover}`)
+                      : null;
+
+                    return (
+                      <BookItem onPress={() => navigation.navigate("Book", { reviewId: item.id })}>
+                        <BookCover
+                          source={fullCoverUrl ? { uri: fullCoverUrl } : require("../assets/default_cover_book.png")}
+                          resizeMode="cover"
+                        />
+                        <BookTitleSnippet numberOfLines={2}>
+                          {title}
+                        </BookTitleSnippet>
+                      </BookItem>
+                    );
+                  }}
+                />
+              </View>
+            )}
+          </>
+        }
+        data={[]} // Основной FlatList используем как контейнер со скроллом
+        renderItem={null}
+        contentContainerStyle={{ paddingBottom: 120 }}
+      />
 
       <NavigationBar icons={icons} onPressOverride={handleNavigationPress} />
-      
       <TabBar color={"#D7C1AB"} />
 
-      <AddBookModal 
+      <AddBookModal
         visible={isModalVisible}
         onClose={() => setModalVisible(false)}
-        onSearch={handleSearch}
-        onAdd={handleAddManual}
+        onSearch={() => { setModalVisible(false); navigation.navigate("BookSearch"); }}
+        onAdd={() => { setModalVisible(false); navigation.navigate("BookManualAdd"); }}
       />
     </View>
   );
@@ -4040,12 +4157,11 @@ export default function HomeScreen() {
 ===== FILE: screens\LibraryScreen.js =====
 
 import React, { useState, useCallback } from "react";
-import { View, FlatList, TouchableWithoutFeedback, ActivityIndicator, Text } from "react-native";
+import { View, FlatList, TouchableWithoutFeedback, ActivityIndicator, Text, TouchableOpacity, Image, Keyboard } from "react-native";
 import styled from "styled-components/native";
 import { useNavigation, useFocusEffect } from "@react-navigation/native"; 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Импорты компонентов
 import NavigationBar from "../components/Navigation_bar";
 import { BookCard } from "../components/Book_card";
 import { TabBar } from "../components/Tab_bar";
@@ -4053,34 +4169,60 @@ import { TextBox } from "../components/TextBox_props";
 import RatingStars from "../components/Rating_starts";
 import RedButton from "../components/Red_button";
 import AddBookModal from "../components/Add_book_modal"; 
-import api from "../src/api/client"; // <--- API клиент
+import InputField from "../components/Input_field";
+import api from "../src/api/client";
 
-// ... (Стили оставляем без изменений: OwlReadsTitle, Separator, Overlay и т.д.) ...
+// --- СТИЛИ ---
+
 const OwlReadsTitle = styled.Text`
   color: #fdf5e2;
   font-family: "Marck Script-Regular";
   font-size: 30px;
-  font-weight: 400;
-  justify-content: center;
-  align-items: center;
   text-align: center;
   margin-top: 48px;
 `;
+
 const Separator = styled.View`
   height: 2px;
   background-color: #FDF5E2;
   margin-top: 5px;
 `;
+
+const SearchSection = styled.View`
+  margin-horizontal: 16px;
+  margin-top: 20px;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+`;
+
+const SearchButton = styled.TouchableOpacity`
+  background-color: #6C5141;
+  border-radius: 14px;
+  justify-content: center;
+  align-items: center;
+  height: 43px; 
+  width: 43px;
+`;
+
+const BookCountText = styled.Text`
+  font-family: "Inter-Regular";
+  font-size: 13px;
+  color: #A28C75;
+  margin-left: 16px;
+  margin-top: 8px;
+  margin-bottom: 6px;
+`;
+
+// СТИЛИ ОВЕРЛЕЯ (КОТОРЫЕ БЫЛИ ПОТЕРЯНЫ)
 const Overlay = styled.View`
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  top: 0; left: 0; right: 0; bottom: 0;
   background-color: rgba(0,0,0,0.65);
   justify-content: flex-end;
   align-items: center;
 `;
+
 const Circle = styled.View`
   position: absolute;
   bottom: -337px;
@@ -4089,8 +4231,8 @@ const Circle = styled.View`
   border-radius: 385px;
   background-color: #FDF5E2;
 `;
+
 const OverlayContent = styled.View`
-  flex: 1;
   align-items: center;
   bottom: 0;
   position: absolute;
@@ -4099,17 +4241,20 @@ const OverlayContent = styled.View`
   gap: 8px;
   padding-bottom: 60px;
 `;
+
 const OverlayCover = styled.Image`
-  height: ${({ height }) => height || 160}px;
-  width: ${({ width }) => width || 110}px;
+  height: 160px;
+  width: 110px;
   border-radius: 7px;
 `;
+
 const OverlayTitle = styled.Text`
   font-family: VollkornSC-Regular;
   font-size: 17px;
   color: #890524;
   align-self: flex-start;
 `;
+
 const OverlayAuthor = styled.Text`
   font-family: Inter-Regular;
   font-size: 14px;
@@ -4124,9 +4269,9 @@ export default function LibraryScreen() {
   const [selectedBook, setSelectedBook] = useState(null);
   const [isAddBookModalVisible, setAddBookModalVisible] = useState(false);
   
-  // --- Новые состояния ---
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const icons = [
     { name: "home", source: require("../assets/home.png"), screen: "Home" },
@@ -4136,6 +4281,34 @@ export default function LibraryScreen() {
     { name: "user", source: require("../assets/user.png"), screen: "Account" },
   ];
 
+  const fetchLibrary = async (query = "") => {
+    setLoading(true);
+    try {
+      const userId = await AsyncStorage.getItem('userId');
+      if (!userId) return;
+
+      const response = await api.get(`/api/users_book_review/library/${userId}`, {
+        params: { q: query } // Серверный поиск
+      });
+      setBooks(response.data);
+    } catch (error) {
+      console.error("Ошибка загрузки библиотеки:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchLibrary(searchQuery);
+    }, [])
+  );
+
+  const handlePressSearch = () => {
+    Keyboard.dismiss();
+    fetchLibrary(searchQuery);
+  };
+
   const handleNavigationPress = (screenName) => {
     if (screenName === "AddBookModal") {
       setAddBookModalVisible(true);
@@ -4144,43 +4317,34 @@ export default function LibraryScreen() {
     }
   };
 
-  const handleSearchBook = () => {
-    setAddBookModalVisible(false);
-    navigation.navigate("SearchBook"); // Убедись, что экран так называется в App.js
-  };
-
-  const handleAddManual = () => {
-    setAddBookModalVisible(false);
-    navigation.navigate("AddBookManual");
-  };
-
-  // --- Загрузка книг ---
-  useFocusEffect(
-    useCallback(() => {
-      const fetchLibrary = async () => {
-        setLoading(true);
-        try {
-          const userId = await AsyncStorage.getItem('userId');
-          if (!userId) return;
-
-          const response = await api.get(`/api/users_book_review/library/${userId}`);
-          setBooks(response.data);
-        } catch (error) {
-          console.error("Ошибка загрузки библиотеки:", error);
-        } finally {
-          setLoading(false);
-        }
-      };
-
-      fetchLibrary();
-    }, [])
-  );
-
   return (
     <View style={{ flex: 1, backgroundColor: "#D7C1AB" }}>
       <View style={{ flexDirection: "column", flex: 1 }}>
         <OwlReadsTitle>OwlReads</OwlReadsTitle>
         <Separator />
+
+        <SearchSection>
+          <View style={{ flex: 1 }}>
+            <InputField 
+              placeholder="Поиск" 
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              style={{ marginHorizontal: 0 }}
+              containerHeight={43} // Передаем высоту 43
+              fontSize={14}        // Размер шрифта внутри
+              returnKeyType="search"
+              onSubmitEditing={handlePressSearch}
+            />
+          </View>
+          <SearchButton onPress={handlePressSearch}>
+            <Image 
+              source={require("../assets/search.png")} 
+              style={{ width: 22, height: 22, tintColor: '#FDF5E2' }} 
+            />
+          </SearchButton>
+        </SearchSection>
+
+        <BookCountText>Всего книг: {books.length}</BookCountText>
         
         {loading ? (
           <ActivityIndicator size="large" color="#890524" style={{ marginTop: 20 }} />
@@ -4202,10 +4366,10 @@ export default function LibraryScreen() {
                 }}
               />
             )}
-            contentContainerStyle={{ paddingBottom: 100, paddingTop: 10 }}
+            contentContainerStyle={{ paddingBottom: 100, paddingTop: 5 }}
             ListEmptyComponent={
               <Text style={{ textAlign: 'center', marginTop: 20, color: '#2F2017', fontFamily: 'Inter-Regular' }}>
-                В вашей библиотеке пока нет книг.
+                Ничего не найдено
               </Text>
             }
           />
@@ -4213,17 +4377,16 @@ export default function LibraryScreen() {
       </View>
 
       <NavigationBar icons={icons} onPressOverride={handleNavigationPress} />
-      
       {!isAddBookModalVisible && <TabBar color={"#D7C1AB"} />}
 
       <AddBookModal 
         visible={isAddBookModalVisible}
         onClose={() => setAddBookModalVisible(false)}
-        onSearch={handleSearchBook}
-        onAdd={handleAddManual}
+        onSearch={() => {setAddBookModalVisible(false); navigation.navigate("BookSearch");}}
+        onAdd={() => {setAddBookModalVisible(false); navigation.navigate("BookManualAdd");}}
       />
 
-      {/* Оверлей */}
+      {/* ОВЕРЛЕЙ ТЕПЕРЬ С КОДОМ */}
       {overlayVisible && selectedBook && (
         <TouchableWithoutFeedback onPress={() => setOverlayVisible(false)}>
           <Overlay>
@@ -4233,14 +4396,11 @@ export default function LibraryScreen() {
                 source={selectedBook.cover_url ? { uri: selectedBook.cover_url } : require("../assets/default_cover_book.png")} 
                 resizeMode="contain" 
               />
-
               <View style={{ alignSelf: 'center' }}>
                 <TextBox text={selectedBook.category_name} color={selectedBook.category_color} />
               </View>
-
               <OverlayTitle>{selectedBook.title}</OverlayTitle>
               <OverlayAuthor>{selectedBook.author}</OverlayAuthor>
-
               <View style={{ alignSelf: 'flex-start', marginTop: 8 }}>
                 <RatingStars
                   rating={selectedBook.rating}
@@ -4249,14 +4409,11 @@ export default function LibraryScreen() {
                   emptyImage={require('../assets/star_empty.png')}
                 />
               </View>
-              
-              {/* Переход к деталям книги (нужно будет передать ID) */}
               <RedButton 
                 name={"Подробнее"} 
                 onPress={() => {
                     setOverlayVisible(false);
                     navigation.navigate("Book", { reviewId: selectedBook.review_id });
-                    console.log("Переход к книге:", selectedBook.review_id);
                 }}
               />
             </OverlayContent>
@@ -4713,23 +4870,33 @@ docker-compose exec api alembic revision --autogenerate -m "create users_book_qu
 docker-compose exec api alembic upgrade head
 
 ## Для очистки бд
-docker-compose exec db psql -U OwlReads_reader_dairy -d OwlReads_reader_dairy_db -c "
->> TRUNCATE TABLE 
->>     users_personal_data, 
->>     literature_works, 
->>     books_editions, 
->>     users_book_review, 
->>     users_book_notes, 
->>     users_book_quotes, 
->>     users_book_rating,
->>     users_reading_records,
->>     users_top_characters,
->>     users_challenges,
->>     users_challenge_books_alphabet,
->>     users_challenge_book_of_year,
->>     users_statistics,
->>     users_book_review_genres
->> RESTART IDENTITY CASCADE;"
+-- 1. Очищаем таблицы, которые зависят от отзывов (самый нижний уровень)
+TRUNCATE TABLE 
+    users_book_notes, 
+    users_book_quotes, 
+    users_book_rating,
+    users_reading_records,
+    users_top_characters,
+    users_book_review_genres,
+    users_book_review_emotions,
+    users_challenge_books_alphabet,
+    users_challenge_book_of_year
+RESTART IDENTITY CASCADE;
+
+-- 2. Очищаем сами отзывы
+TRUNCATE TABLE users_book_review RESTART IDENTITY CASCADE;
+
+-- 3. Очищаем статистику и челленджи (они привязаны к пользователям)
+TRUNCATE TABLE 
+    users_statistics,
+    users_challenges
+RESTART IDENTITY CASCADE;
+
+-- 4. Очищаем книги и произведения (если вы хотите удалить все добавленные книги)
+TRUNCATE TABLE 
+    books_editions, 
+    literature_works 
+RESTART IDENTITY CASCADE;
 
 
 
@@ -4793,4 +4960,5 @@ urllib3==2.5.0
 uvicorn==0.38.0
 Werkzeug==3.1.3
 email-validator==2.2.0
+python-multipart==0.0.9
 

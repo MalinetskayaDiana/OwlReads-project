@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from "react";
 import { View, FlatList, TouchableWithoutFeedback, ActivityIndicator, Text, TouchableOpacity, Image, Keyboard } from "react-native";
 import styled from "styled-components/native";
-import { useNavigation, useFocusEffect } from "@react-navigation/native"; 
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import NavigationBar from "../components/Navigation_bar";
@@ -10,7 +10,7 @@ import { TabBar } from "../components/Tab_bar";
 import { TextBox } from "../components/TextBox_props";
 import RatingStars from "../components/Rating_starts";
 import RedButton from "../components/Red_button";
-import AddBookModal from "../components/Add_book_modal"; 
+import AddBookModal from "../components/Add_book_modal";
 import InputField from "../components/Input_field";
 import api from "../src/api/client";
 
@@ -106,11 +106,11 @@ const OverlayAuthor = styled.Text`
 
 export default function LibraryScreen() {
   const navigation = useNavigation();
-  
+
   const [overlayVisible, setOverlayVisible] = useState(false);
   const [selectedBook, setSelectedBook] = useState(null);
   const [isAddBookModalVisible, setAddBookModalVisible] = useState(false);
-  
+
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -159,6 +159,12 @@ export default function LibraryScreen() {
     }
   };
 
+  const getFullCoverUrl = (cover) => {
+    if (!cover) return require("../assets/default_cover_book.png");
+    if (cover.startsWith('http')) return { uri: cover };
+    return { uri: `${api.defaults.baseURL}${cover}` };
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: "#D7C1AB" }}>
       <View style={{ flexDirection: "column", flex: 1 }}>
@@ -167,8 +173,8 @@ export default function LibraryScreen() {
 
         <SearchSection>
           <View style={{ flex: 1 }}>
-            <InputField 
-              placeholder="Поиск" 
+            <InputField
+              placeholder="Поиск"
               value={searchQuery}
               onChangeText={setSearchQuery}
               style={{ marginHorizontal: 0 }}
@@ -179,15 +185,15 @@ export default function LibraryScreen() {
             />
           </View>
           <SearchButton onPress={handlePressSearch}>
-            <Image 
-              source={require("../assets/search.png")} 
-              style={{ width: 22, height: 22, tintColor: '#FDF5E2' }} 
+            <Image
+              source={require("../assets/search.png")}
+              style={{ width: 22, height: 22, tintColor: '#FDF5E2' }}
             />
           </SearchButton>
         </SearchSection>
 
         <BookCountText>Всего книг: {books.length}</BookCountText>
-        
+
         {loading ? (
           <ActivityIndicator size="large" color="#890524" style={{ marginTop: 20 }} />
         ) : (
@@ -196,7 +202,7 @@ export default function LibraryScreen() {
             keyExtractor={(item) => String(item.review_id)}
             renderItem={({ item }) => (
               <BookCard
-                cover={item.cover_url ? { uri: item.cover_url } : require("../assets/default_cover_book.png")}
+                cover={getFullCoverUrl(item.cover_url)}
                 category={item.category_name}
                 categorycolor={item.category_color}
                 title={item.title}
@@ -221,11 +227,11 @@ export default function LibraryScreen() {
       <NavigationBar icons={icons} onPressOverride={handleNavigationPress} />
       {!isAddBookModalVisible && <TabBar color={"#D7C1AB"} />}
 
-      <AddBookModal 
+      <AddBookModal
         visible={isAddBookModalVisible}
         onClose={() => setAddBookModalVisible(false)}
-        onSearch={() => {setAddBookModalVisible(false); navigation.navigate("BookSearch");}}
-        onAdd={() => {setAddBookModalVisible(false); navigation.navigate("BookManualAdd");}}
+        onSearch={() => { setAddBookModalVisible(false); navigation.navigate("BookSearch"); }}
+        onAdd={() => { setAddBookModalVisible(false); navigation.navigate("BookManualAdd"); }}
       />
 
       {/* ОВЕРЛЕЙ ТЕПЕРЬ С КОДОМ */}
@@ -234,9 +240,9 @@ export default function LibraryScreen() {
           <Overlay>
             <Circle />
             <OverlayContent>
-              <OverlayCover 
-                source={selectedBook.cover_url ? { uri: selectedBook.cover_url } : require("../assets/default_cover_book.png")} 
-                resizeMode="contain" 
+              <OverlayCover
+                source={getFullCoverUrl(selectedBook.cover_url)} 
+                resizeMode="contain"
               />
               <View style={{ alignSelf: 'center' }}>
                 <TextBox text={selectedBook.category_name} color={selectedBook.category_color} />
@@ -251,11 +257,11 @@ export default function LibraryScreen() {
                   emptyImage={require('../assets/star_empty.png')}
                 />
               </View>
-              <RedButton 
-                name={"Подробнее"} 
+              <RedButton
+                name={"Подробнее"}
                 onPress={() => {
-                    setOverlayVisible(false);
-                    navigation.navigate("Book", { reviewId: selectedBook.review_id });
+                  setOverlayVisible(false);
+                  navigation.navigate("Book", { reviewId: selectedBook.review_id });
                 }}
               />
             </OverlayContent>

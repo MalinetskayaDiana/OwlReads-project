@@ -212,6 +212,11 @@ def get_review_by_id(db: Session, review_id: int):
 def get_user_reviews_by_category_name(db: Session, user_id: int, category_name: str):
     return (
         db.query(UserBookReview)
+        .options(
+            # Подгружаем книгу, а внутри книги подгружаем литературное произведение (название/автор)
+            joinedload(UserBookReview.book).joinedload(BookEdition.work),
+            joinedload(UserBookReview.category)
+        )
         .join(UserBookReview.category)
         .filter(UserBookReview.user_id == user_id)
         .filter(UserBookReview.category.has(name=category_name))

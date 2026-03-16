@@ -11,23 +11,33 @@ docker-compose exec api alembic revision --autogenerate -m "create users_book_qu
 docker-compose exec api alembic upgrade head
 
 ## Для очистки бд
-docker-compose exec db psql -U OwlReads_reader_dairy -d OwlReads_reader_dairy_db -c "
->> TRUNCATE TABLE 
->>     users_personal_data, 
->>     literature_works, 
->>     books_editions, 
->>     users_book_review, 
->>     users_book_notes, 
->>     users_book_quotes, 
->>     users_book_rating,
->>     users_reading_records,
->>     users_top_characters,
->>     users_challenges,
->>     users_challenge_books_alphabet,
->>     users_challenge_book_of_year,
->>     users_statistics,
->>     users_book_review_genres
->> RESTART IDENTITY CASCADE;"
+-- 1. Очищаем таблицы, которые зависят от отзывов (самый нижний уровень)
+TRUNCATE TABLE 
+    users_book_notes, 
+    users_book_quotes, 
+    users_book_rating,
+    users_reading_records,
+    users_top_characters,
+    users_book_review_genres,
+    users_book_review_emotions,
+    users_challenge_books_alphabet,
+    users_challenge_book_of_year
+RESTART IDENTITY CASCADE;
+
+-- 2. Очищаем сами отзывы
+TRUNCATE TABLE users_book_review RESTART IDENTITY CASCADE;
+
+-- 3. Очищаем статистику и челленджи (они привязаны к пользователям)
+TRUNCATE TABLE 
+    users_statistics,
+    users_challenges
+RESTART IDENTITY CASCADE;
+
+-- 4. Очищаем книги и произведения (если вы хотите удалить все добавленные книги)
+TRUNCATE TABLE 
+    books_editions, 
+    literature_works 
+RESTART IDENTITY CASCADE;
 
 
 

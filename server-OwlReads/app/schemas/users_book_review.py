@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 from pydantic import BaseModel
 
 # Импортируем другие схемы (обратите внимание на точки перед названиями файлов)
@@ -8,6 +8,9 @@ from .users_book_quotes import UserBookQuote
 from .users_book_notes import UserBookNote
 from .genre import GenreRead
 from .emotions import EmotionRead
+
+if TYPE_CHECKING:
+    from .literature import BookEdition
 
 class UserBookReviewBase(BaseModel):
     user_id: int
@@ -20,6 +23,7 @@ class UserBookReviewCreate(UserBookReviewBase):
 class UserBookReview(UserBookReviewBase):
     id: int
     category: BookCategory
+    book: Optional["BookEdition"] = None
     rating: Optional[UserBookRating] = None
     quotes: List[UserBookQuote] = []
     notes: List[UserBookNote] = []
@@ -75,3 +79,6 @@ class UserBookReviewUpdateGenres(BaseModel):
 
 class UserBookReviewUpdateEmotions(BaseModel):
     emotions: List[str]  # Список названий, например ["Смех", "Вдохновение"]
+
+from .literature import BookEdition
+UserBookReview.model_rebuild()

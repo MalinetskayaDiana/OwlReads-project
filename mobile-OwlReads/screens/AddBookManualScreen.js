@@ -139,64 +139,86 @@ export default function AddBookManualScreen() {
 
   // --- Сохранение книги ---
   const handleSave = async () => {
-    let newErrors = {};
-    let valid = true;
+  let newErrors = {};
+  let valid = true;
 
-    // Валидация
-    if (!title.trim()) {
-      newErrors.title = "Введите название книги*";
-      valid = false;
-    }
-    if (!author.trim()) {
-      newErrors.author = "Введите автора*";
-      valid = false;
-    }
-    if (!selectedCategory) {
-      Alert.alert("Ошибка", "Пожалуйста, выберите категорию");
-      valid = false;
+  // 1. Валидация (оставляем как была)
+  if (!title.trim()) {
+    newErrors.title = "Введите название книги*";
+    valid = false;
+  }
+  if (!author.trim()) {
+    newErrors.author = "Введите автора*";
+    valid = false;
+  }
+  if (!selectedCategory) {
+    Alert.alert("Ошибка", "Пожалуйста, выберите категорию");
+    valid = false;
+  }
+
+  setErrors(newErrors);
+  if (!valid) return;
+
+  setLoading(true);
+  try {
+    const userId = await AsyncStorage.getItem('userId');
+    if (!userId) {
+      Alert.alert("Ошибка", "Пользователь не авторизован.");
+      navigation.navigate("Entry");
+      return;
     }
 
-    setErrors(newErrors);
-    if (!valid) return;
+    // 2. Создаем FormData вместо обычного объекта
+    const formData = new FormData();
+    
+    // Добавляем текстовые поля
+    formData.append('title', title);
+    formData.append('author', author);
+    formData.append('category_name', selectedCategory);
+    if (pages) formData.append('pages', pages);
+    if (year) formData.append('year', year);
+    if (language) formData.append('language', language);
+    if (description) formData.append('description', description);
+    if (isbn) formData.append('isbn', isbn);
 
-    setLoading(true);
-    try {
-      // Получаем ID пользователя
-      const userId = await AsyncStorage.getItem('userId');
-      if (!userId) {
-        Alert.alert("Ошибка", "Пользователь не авторизован. Пожалуйста, войдите снова.");
-        navigation.navigate("Entry");
-        return;
+    // 3. Логика обложки
+    if (coverUri) {
+      if (coverUri.startsWith('http')) {
+        // Если это ссылка (например, из поиска Google), отправляем как строку
+        formData.append('cover_url', coverUri);
+      } else {
+        // Если это локальный файл (file://), упаковываем его для загрузки
+        const filename = coverUri.split('/').pop();
+        const match = /\.(\w+)$/.exec(filename);
+        const type = match ? `image/${match[1]}` : `image`;
+
+        formData.append('cover_file', {
+          uri: coverUri,
+          name: filename,
+          type: type,
+        });
       }
-
-      // Подготовка данных для бэкенда
-      const payload = {
-        title: title,
-        author: author,
-        category_name: selectedCategory,
-        pages: pages ? parseInt(pages) : null,
-        year: year ? parseInt(year) : null,
-        language: language,
-        description: description,
-        isbn: isbn,
-        // Если ссылка внешняя (http) - отправляем. Если локальная (file://) - пока null.
-        cover_url: coverUri && coverUri.startsWith('http') ? coverUri : null 
-      };
-
-      // Отправка запроса
-      await api.post(`/api/users_book_review/manual?user_id=${userId}`, payload);
-
-      Alert.alert("Успех", "Книга добавлена в вашу библиотеку!", [
-        { text: "OK", onPress: () => navigation.navigate("Library") }
-      ]);
-
-    } catch (error) {
-      console.error("Ошибка сохранения:", error);
-      Alert.alert("Ошибка", "Не удалось сохранить книгу. Проверьте соединение.");
-    } finally {
-      setLoading(false);
     }
-  };
+
+    // 4. Отправка запроса
+    // ВАЖНО: axios сам выставит нужные заголовки для FormData, если передать его вторым аргументом
+    await api.post(`/api/users_book_review/manual?user_id=${userId}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
+    Alert.alert("Успех", "Книга добавлена в вашу библиотеку!", [
+      { text: "OK", onPress: () => navigation.navigate("Library") }
+    ]);
+
+  } catch (error) {
+    console.error("Ошибка сохранения:", error);
+    Alert.alert("Ошибка", "Не удалось сохранить книгу. Проверьте бэкенд.");
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <View style={{ flex: 1, backgroundColor: "#D7C1AB" }}>

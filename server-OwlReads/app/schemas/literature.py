@@ -33,6 +33,7 @@ class BookEditionCreate(BookEditionBase):
 class BookEdition(BookEditionBase):
     id: int
     literature_work_id: int
+    work: Optional[LiteratureWork] = None
 
     class Config:
         from_attributes = True

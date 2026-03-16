@@ -22,6 +22,17 @@ const NavigationContainer = styled.View`
   bottom: 57px;
   left: 0;
   right: 0;
+
+  shadow-offset: 1px 2px;
+  shadow-opacity: 0.8;
+  shadow-radius: 4px;
+  margin-bottom: 10px; 
+  shadow-color: #230109;
+  shadow-offset: 0px 4px;
+  shadow-opacity: 0.3;
+  shadow-radius: 4px;
+
+  elevation: 6;
 `;
 
 export default function NavigationBar({ icons, onPressOverride }) {
