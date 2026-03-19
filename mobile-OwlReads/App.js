@@ -21,6 +21,8 @@ import SettingsScreen from "./screens/SettingsScreen";
 import FriendsListScreen from "./screens/FriendsListScreen";
 import AddFriendScreen from "./screens/AddFriendScreen";
 
+import { FriendRequestProvider } from "./context/FriendRequestContext";
+
 const Stack = createNativeStackNavigator();
 
 export default function App() {
@@ -47,77 +49,79 @@ export default function App() {
 
   return (
     <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        <Stack.Screen
-          name="Start"
-          component={StartScreen}
-          options={{ animation: "none" }} />
-        <Stack.Screen
-          name="Registration"
-          component={RegistrationScreen}
-          options={{ animation: "none" }} />
-        <Stack.Screen
-          name="Entry"
-          component={EntryScreen}
-          options={{ animation: "none" }} />
-        <Stack.Screen
-          name="ForgotPassword"
-          component={ForgotPasswordScreen}
-          options={{ animation: "none" }} />
-        <Stack.Screen
-          name="Home"
-          component={HomeScreen}
-          options={{ animation: "none" }} />
-        <Stack.Screen
-          name="Library"
-          component={LibraryScreen}
-          options={{ animation: "none" }} />
-        <Stack.Screen
-          name="AddBookModal"
-          component={AddBookModal}
-          options={{ animation: "none" }} />
-        <Stack.Screen
-          name="Book"
-          component={BookScreen}
-          options={{ animation: "none" }} />
-        <Stack.Screen
-          name="BookManualAdd"
-          component={AddBookManualScreen}
-          options={{ animation: "none" }} />
-        <Stack.Screen
-          name="BookSearch"
-          component={BookSearchScreen}
-          options={{ animation: "none" }} />
-        <Stack.Screen
-          name="Chats"
-          component={ChatsScreen}
-          options={{ animation: "none" }} />
-        <Stack.Screen
-          name="Сorrespondence"
-          component={CorrespondenceScreen}
-          options={{ animation: "none" }} />
-        <Stack.Screen
-          name="Account"
-          component={AccountScreen}
-          options={{ animation: "none" }} />
-        <Stack.Screen
-          name="BarcodeScanner"
-          component={BarcodeScannerScreen}
-          options={{ animation: "none" }} />
-        <Stack.Screen
-          name="Settings"
-          component={SettingsScreen}
-          options={{ animation: "none" }} />
-        <Stack.Screen
-          name="FriendsList"
-          component={FriendsListScreen}
-          options={{ animation: "none" }}
-        />
-        <Stack.Screen
-          name="AddFriend"
-          component={AddFriendScreen}
-          options={{ animation: "none" }} />
-      </Stack.Navigator>
+      <FriendRequestProvider>
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          <Stack.Screen
+            name="Start"
+            component={StartScreen}
+            options={{ animation: "none" }} />
+          <Stack.Screen
+            name="Registration"
+            component={RegistrationScreen}
+            options={{ animation: "none" }} />
+          <Stack.Screen
+            name="Entry"
+            component={EntryScreen}
+            options={{ animation: "none" }} />
+          <Stack.Screen
+            name="ForgotPassword"
+            component={ForgotPasswordScreen}
+            options={{ animation: "none" }} />
+          <Stack.Screen
+            name="Home"
+            component={HomeScreen}
+            options={{ animation: "none" }} />
+          <Stack.Screen
+            name="Library"
+            component={LibraryScreen}
+            options={{ animation: "none" }} />
+          <Stack.Screen
+            name="AddBookModal"
+            component={AddBookModal}
+            options={{ animation: "none" }} />
+          <Stack.Screen
+            name="Book"
+            component={BookScreen}
+            options={{ animation: "none" }} />
+          <Stack.Screen
+            name="BookManualAdd"
+            component={AddBookManualScreen}
+            options={{ animation: "none" }} />
+          <Stack.Screen
+            name="BookSearch"
+            component={BookSearchScreen}
+            options={{ animation: "none" }} />
+          <Stack.Screen
+            name="Chats"
+            component={ChatsScreen}
+            options={{ animation: "none" }} />
+          <Stack.Screen
+            name="Сorrespondence"
+            component={CorrespondenceScreen}
+            options={{ animation: "none" }} />
+          <Stack.Screen
+            name="Account"
+            component={AccountScreen}
+            options={{ animation: "none" }} />
+          <Stack.Screen
+            name="BarcodeScanner"
+            component={BarcodeScannerScreen}
+            options={{ animation: "none" }} />
+          <Stack.Screen
+            name="Settings"
+            component={SettingsScreen}
+            options={{ animation: "none" }} />
+          <Stack.Screen
+            name="FriendsList"
+            component={FriendsListScreen}
+            options={{ animation: "none" }}
+          />
+          <Stack.Screen
+            name="AddFriend"
+            component={AddFriendScreen}
+            options={{ animation: "none" }} />
+        </Stack.Navigator>
+      </FriendRequestProvider>
     </NavigationContainer>
   );
 }

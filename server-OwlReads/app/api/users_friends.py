@@ -23,6 +23,26 @@ def add_friend(user_id: int, data: FriendAdd, db: Session = Depends(get_db)):
         friend_photo=friendship.friend.profile_photo
     )
 
+# app/api/users_friends.py
+@router.get("/pending/{user_id}")
+def check_pending(user_id: int, db: Session = Depends(get_db)):
+    requests = crud.get_incoming_requests(db, user_id)
+    return [
+        {
+            "friendship_id": r.id,
+            "user_id": r.user.id,
+            "username": r.user.username,
+            "profile_photo": r.user.profile_photo,
+            "uid": r.user.uid
+        } for r in requests
+    ]
+
+@router.post("/respond/{friendship_id}")
+def respond(friendship_id: int, user_id: int, accept: bool, db: Session = Depends(get_db)):
+    success = crud.respond_to_request(db, friendship_id, user_id, accept)
+    if not success:
+        raise HTTPException(status_code=404, detail="Request not found")
+    return {"message": "Success"}
 
 @router.get("/my/{user_id}", response_model=List[FriendRead])
 def list_friends(user_id: int, db: Session = Depends(get_db)):
