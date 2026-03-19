@@ -5,15 +5,30 @@ from app.schemas.users_personal_data import UserPersonalDataUpdate
 from passlib.context import CryptContext
 from app.utils.email import generate_verification_code, send_verification_email
 from app.core.security import verify_password
+import string
+import random
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def generate_unique_owl_id(db: Session):
+    chars = string.ascii_uppercase + string.digits
+    while True:
+        random_str = ''.join(random.choices(chars, k=12))
+        new_uid = f"owl_{random_str}"
+        # Проверяем, нет ли такого ID уже в базе
+        exists = db.query(UserPersonalData).filter(UserPersonalData.uid == new_uid).first()
+        if not exists:
+            return new_uid
 
 def create_user(db: Session, user: UserPersonalDataCreate):
     hashed_password = pwd_context.hash(user.password_hash)
 
+    owl_uid = generate_unique_owl_id(db)
+
     code = generate_verification_code()
 
     db_user = UserPersonalData(
+        uid=owl_uid,
         username=user.username,
         email=user.email,
         password_hash=hashed_password,

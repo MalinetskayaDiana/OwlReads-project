@@ -324,17 +324,48 @@ class UserChallengeBookOfYear(Base):
     review = relationship("UserBookReview", back_populates="book_of_year_challenges")
 
 
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\models\users_friends.py =====
+
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, UniqueConstraint
+from sqlalchemy.orm import relationship
+from datetime import datetime
+from app.db.base import Base
+
+
+class UserFriend(Base):
+    __tablename__ = "users_friends"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users_personal_data.id"), nullable=False)
+    friend_id = Column(Integer, ForeignKey("users_personal_data.id"), nullable=False)
+
+    custom_nickname = Column(String(50), nullable=True)
+
+    # Статус (на будущее: pending - ожидает, accepted - друзья)
+    status = Column(String(20), default="accepted")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Связи
+    user = relationship("UserPersonalData", foreign_keys=[user_id])
+    friend = relationship("UserPersonalData", foreign_keys=[friend_id])
+
+    # Ограничение: нельзя добавить одного и того же человека дважды
+    __table_args__ = (UniqueConstraint('user_id', 'friend_id', name='_user_friend_uc'),)
+
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\models\users_personal_data.py =====
 
 from sqlalchemy import Column, Integer, String, Boolean, DateTime
 from sqlalchemy.orm import relationship
 from datetime import datetime
+import random
+import string
 from app.db.base import Base
 
 class UserPersonalData(Base):
     __tablename__ = "users_personal_data"
 
     id = Column(Integer, primary_key=True, index=True)
+    uid = Column(String(16), unique=True, index=True, nullable=True)
     username = Column(String(50), unique=True, nullable=False)
     email = Column(String(255), unique=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
@@ -344,10 +375,8 @@ class UserPersonalData(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     profile_photo = Column(String(255), nullable=True)
 
-    # --- НОВЫЕ ПОЛЯ ---
     verification_code = Column(String(6), nullable=True)
     is_verified = Column(Boolean, default=False)
-    # ------------------
 
     # обратные связи
     statistics = relationship("UserStatistics", back_populates="user", uselist=False)
@@ -443,6 +472,7 @@ from .books_categories import BookCategory
 from .users_book_review import UserBookReview
 from .emotions import Emotion
 from .users_book_review_emotions import UserBookReviewEmotion
+from .users_friends import UserFriend
 
 __all__ = ["PopularQuote",
            "Genre",

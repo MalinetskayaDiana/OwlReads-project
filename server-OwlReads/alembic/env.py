@@ -45,6 +45,7 @@ import app.models.books_categories
 import app.models.users_book_review
 import app.models.emotions
 import app.models.users_book_review_emotions
+import app.models.users_friends
 
 target_metadata = Base.metadata
 

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, FlatList } from "react-native";
+import { View, FlatList, TouchableOpacity, Image } from "react-native";
 import styled from "styled-components/native";
 import { useNavigation } from "@react-navigation/native"; // <--- 1. Импорт навигации
 
@@ -10,13 +10,19 @@ import AddNewChatItem from "../components/Add_new_chat";
 import { TabBar } from "../components/Tab_bar";
 import AddBookModal from "../components/Add_book_modal"; // <--- 2. Импорт модалки
 
+const HeaderContainer = styled.View`
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 48px;
+  padding-horizontal: 20px;
+`;
+
 const OwlReadsTitle = styled.Text`
   color: #fdf5e2;
   font-family: "Marck Script-Regular";
   font-size: 30px;
   font-weight: 400;
-  text-align: center;
-  margin-top: 48px;
 `;
 
 export default function ChatsScreen() {
@@ -59,7 +65,16 @@ export default function ChatsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: "#D7C1AB" }}>
-      <OwlReadsTitle>OwlReads</OwlReadsTitle>
+      <HeaderContainer>
+        <View style={{ width: 35 }} />
+        <OwlReadsTitle>OwlReads</OwlReadsTitle>
+        <TouchableOpacity onPress={() => navigation.navigate("FriendsList")}>
+          <Image
+            source={require("../assets/friends.png")} // Заменили на friends.png
+            style={{ width: 35, height: 35 }}
+          />
+        </TouchableOpacity>
+      </HeaderContainer>
 
       <FlatList
         data={chats}
@@ -74,12 +89,12 @@ export default function ChatsScreen() {
 
       {/* 7. Передаем перехватчик */}
       <NavigationBar icons={icons} onPressOverride={handleNavigationPress} />
-      
+
       {/* 8. Скрываем TabBar при открытии меню */}
-      {!isAddBookModalVisible && <TabBar color={"#D7C1AB"}/>}
+      {!isAddBookModalVisible && <TabBar color={"#D7C1AB"} />}
 
       {/* 9. Модальное окно */}
-      <AddBookModal 
+      <AddBookModal
         visible={isAddBookModalVisible}
         onClose={() => setAddBookModalVisible(false)}
         onSearch={handleSearchBook}

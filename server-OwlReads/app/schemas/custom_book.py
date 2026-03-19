@@ -11,3 +11,4 @@ class BookManualCreate(BaseModel):
     cover_url: Optional[str] = None
     category_name: str
     isbn: Optional[str] = None
+    binding_type: Optional[str] = "Не выбрано"

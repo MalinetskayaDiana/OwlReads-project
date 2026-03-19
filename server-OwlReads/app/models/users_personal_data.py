@@ -1,12 +1,15 @@
 from sqlalchemy import Column, Integer, String, Boolean, DateTime
 from sqlalchemy.orm import relationship
 from datetime import datetime
+import random
+import string
 from app.db.base import Base
 
 class UserPersonalData(Base):
     __tablename__ = "users_personal_data"
 
     id = Column(Integer, primary_key=True, index=True)
+    uid = Column(String(16), unique=True, index=True, nullable=True)
     username = Column(String(50), unique=True, nullable=False)
     email = Column(String(255), unique=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
@@ -16,10 +19,8 @@ class UserPersonalData(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     profile_photo = Column(String(255), nullable=True)
 
-    # --- НОВЫЕ ПОЛЯ ---
     verification_code = Column(String(6), nullable=True)
     is_verified = Column(Boolean, default=False)
-    # ------------------
 
     # обратные связи
     statistics = relationship("UserStatistics", back_populates="user", uselist=False)

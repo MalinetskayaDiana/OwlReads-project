@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Optional
 
 class UserPersonalDataBase(BaseModel):
+    uid: Optional[str] = None
     username: str
     email: EmailStr
     password_hash: str

@@ -18,6 +18,8 @@ import AddBookManualScreen from "./screens/AddBookManualScreen";
 import BookSearchScreen from "./screens/BookSearchScreen";
 import BarcodeScannerScreen from "./screens/BarcodeScannerScreen";
 import SettingsScreen from "./screens/SettingsScreen";
+import FriendsListScreen from "./screens/FriendsListScreen";
+import AddFriendScreen from "./screens/AddFriendScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -105,6 +107,15 @@ export default function App() {
         <Stack.Screen
           name="Settings"
           component={SettingsScreen}
+          options={{ animation: "none" }} />
+        <Stack.Screen
+          name="FriendsList"
+          component={FriendsListScreen}
+          options={{ animation: "none" }}
+        />
+        <Stack.Screen
+          name="AddFriend"
+          component={AddFriendScreen}
           options={{ animation: "none" }} />
       </Stack.Navigator>
     </NavigationContainer>

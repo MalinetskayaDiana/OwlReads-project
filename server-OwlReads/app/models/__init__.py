@@ -17,6 +17,7 @@ from .books_categories import BookCategory
 from .users_book_review import UserBookReview
 from .emotions import Emotion
 from .users_book_review_emotions import UserBookReviewEmotion
+from .users_friends import UserFriend
 
 __all__ = ["PopularQuote",
            "Genre",

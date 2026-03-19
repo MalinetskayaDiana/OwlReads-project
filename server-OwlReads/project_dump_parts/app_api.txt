@@ -480,6 +480,7 @@ async def add_book_manually(
         isbn: str = Form(None),
         cover_url: str = Form(None),
         cover_file: UploadFile = File(None),  # Принимаем файл
+        binding_type: str = Form("Не выбрано"),
         db: Session = Depends(get_db)
 ):
     final_cover = cover_url
@@ -706,6 +707,63 @@ def read_entry(entry_id: int, db: Session = Depends(get_db)):
     return entry
 
 
+===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\users_friends.py =====
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import List
+from app.db.session import get_db
+from app.crud import users_friends as crud
+from app.schemas.users_friends import FriendAdd, FriendRead, FriendUpdateNickname
+
+router = APIRouter()
+
+
+@router.post("/add/{user_id}", response_model=FriendRead)
+def add_friend(user_id: int, data: FriendAdd, db: Session = Depends(get_db)):
+    friendship, error = crud.add_friend(db, user_id, data.friend_uid)
+    if error:
+        raise HTTPException(status_code=400, detail=error)
+
+    return FriendRead(
+        id=friendship.id,
+        friend_id=friendship.friend.id,
+        friend_username=friendship.friend.username,
+        custom_nickname=friendship.custom_nickname,
+        friend_uid=friendship.friend.uid,
+        friend_photo=friendship.friend.profile_photo
+    )
+
+
+@router.get("/my/{user_id}", response_model=List[FriendRead])
+def list_friends(user_id: int, db: Session = Depends(get_db)):
+    friends = crud.get_user_friends(db, user_id)
+    return [
+        FriendRead(
+            id=f.id,
+            friend_id=f.friend.id,
+            friend_username=f.friend.username,
+            custom_nickname=f.custom_nickname,
+            friend_uid=f.friend.uid,
+            friend_photo=f.friend.profile_photo
+        ) for f in friends
+    ]
+
+
+@router.patch("/{friendship_id}/rename/{user_id}")
+def rename_friend(friendship_id: int, user_id: int, data: FriendUpdateNickname, db: Session = Depends(get_db)):
+    updated = crud.update_friend_nickname(db, friendship_id, user_id, data.custom_nickname)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Friendship not found")
+    return {"message": "Nickname updated", "new_nickname": updated.custom_nickname}
+
+
+@router.delete("/{friendship_id}/remove/{user_id}")
+def delete_friend(friendship_id: int, user_id: int, db: Session = Depends(get_db)):
+    if not crud.remove_friend(db, friendship_id, user_id):
+        raise HTTPException(status_code=404, detail="Friendship not found")
+    return {"message": "Friend removed"}
+
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\users_personal_data.py =====
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -720,6 +778,10 @@ from app.schemas.users_personal_data import UserPersonalData, UserPersonalDataCr
 from app.crud import users_personal_data as crud
 from app.core.security import get_password_hash
 from app.core.security import verify_password
+
+from app.models.users_personal_data import UserPersonalData
+from app.models.users_friends import UserFriend
+from app.api.users_statistics import read_user_statistics
 
 router = APIRouter()
 
@@ -836,6 +898,49 @@ def delete_user_account(user_id: int, db: Session = Depends(get_db)):
     if not success:
         raise HTTPException(status_code=404, detail="User not found")
     return None
+
+
+@router.get("/search/{uid}", response_model=UserPersonalData)
+def search_user_by_uid(uid: str, db: Session = Depends(get_db)):
+    user = db.query(UserPersonalData).filter(UserPersonalData.uid == uid).first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь с таким ID не найден")
+
+    return user
+
+
+@router.get("/search-info/{uid}")
+def search_friend_with_stats(uid: str, current_user_id: int, db: Session = Depends(get_db)):
+    # 1. Ищем пользователя по UID
+    user = db.query(UserPersonalData).filter(UserPersonalData.uid == uid).first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    # 2. Получаем его статистику (используем уже готовую функцию)
+    stats = read_user_statistics(user.id, db)
+
+    # 3. Проверяем, не в друзьях ли он уже у текущего пользователя
+    friendship = db.query(UserFriend).filter(
+        UserFriend.user_id == current_user_id,
+        UserFriend.friend_id == user.id
+    ).first()
+
+    return {
+        "id": user.id,
+        "username": user.username,
+        "profile_photo": user.profile_photo,
+        "uid": user.uid,
+        "stats": {
+            "total": stats.books_in_library,
+            "read": stats.books_read,
+            "favorites": stats.books_favorites
+        },
+        "friendship_id": friendship.id if friendship else None,
+        "is_friend": friendship is not None
+    }
+
 
 ===== D:\BSUIR\Diploma\OwlReads-project\server-OwlReads\app\api\users_reading_records.py =====
 

@@ -95,6 +95,7 @@ async def add_book_manually(
         isbn: str = Form(None),
         cover_url: str = Form(None),
         cover_file: UploadFile = File(None),  # Принимаем файл
+        binding_type: str = Form("Не выбрано"),
         db: Session = Depends(get_db)
 ):
     final_cover = cover_url

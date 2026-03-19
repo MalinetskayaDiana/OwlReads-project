@@ -22,6 +22,7 @@ from app.api import (
     users_book_review,
     auth,
     emotions,
+    users_friends,
 )
 
 app = FastAPI(title="OwlReads API")
@@ -59,5 +60,6 @@ app.include_router(users_book_review_genres.router,  prefix="/api/users_book_rev
 app.include_router(books_categories.router,          prefix="/api/books_categories", tags=["books_categories"])
 app.include_router(users_book_review.router,         prefix="/api/users_book_review", tags=["users_book_review"])
 app.include_router(emotions.router,                  prefix="/api/emotions", tags=["emotions"])
+app.include_router(users_friends.router,             prefix="/api/friends", tags=["friends"])
 
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
