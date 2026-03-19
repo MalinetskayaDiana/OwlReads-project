@@ -45,7 +45,8 @@ def search_books(db: Session, query: str, limit: int = 10):
         .filter(
             or_(
                 LiteratureWork.title.ilike(search_term),
-                LiteratureWork.author.ilike(search_term)
+                LiteratureWork.author.ilike(search_term),
+                BookEdition.isbn == query
             )
         )
         .limit(limit)

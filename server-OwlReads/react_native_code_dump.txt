@@ -1215,6 +1215,14 @@ import { TabBar } from "../components/Tab_bar";
 import AddBookModal from "../components/Add_book_modal";
 import api from "../src/api/client";
 
+const AVATAR_PRESETS = [
+  { id: 'user_icon', source: require("../assets/user_icon.png") },
+  { id: 'owl_icon_yellow', source: require("../assets/owl_icon_yellow.png") },
+  { id: 'owl_icon_red', source: require("../assets/owl_icon_red.png") },
+  { id: 'owl_icon_blue', source: require("../assets/owl_icon_blue.png") },
+  { id: 'owl_icon_green', source: require("../assets/owl_icon_green.png") },
+];
+
 // --- STYLED COMPONENTS (Без изменений) ---
 const OwlReadsTitle = styled.Text`
   color: #fdf5e2;
@@ -1431,6 +1439,15 @@ export default function AccountScreen() {
     }, [])
   );
 
+  const getAvatarSource = (photo) => {
+    if (!photo || photo === 'user_icon') return require("../assets/user_icon.png");
+    const preset = AVATAR_PRESETS.find(p => p.id === photo);
+    if (preset) return preset.source;
+    if (photo.startsWith('/static')) return { uri: `${api.defaults.baseURL}${photo}` };
+    return { uri: photo };
+  };
+
+
   if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: "#D7C1AB", justifyContent: "center", alignItems: "center" }}>
@@ -1470,11 +1487,7 @@ export default function AccountScreen() {
             )}
 
             <Image
-              source={
-                userData.profile_photo
-                  ? { uri: userData.profile_photo }
-                  : require("../assets/user_icon.png")
-              }
+              source={getAvatarSource(userData.profile_photo)}
               style={{ width: 150, height: 150, borderRadius: 75 }}
             />
           </UserContainer>
@@ -3897,9 +3910,8 @@ const BookItem = styled(TouchableOpacity)`
 
 const BookCover = styled.Image`
   width: 70px;
-  height: 100px;
+  height: 103px;
   border-radius: 5px;
-  background-color: #E8DFC9;
 `;
 
 const BookTitleSnippet = styled.Text`

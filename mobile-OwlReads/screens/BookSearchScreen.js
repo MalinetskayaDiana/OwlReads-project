@@ -1,14 +1,14 @@
-import React, { useState } from "react";
-import { View, FlatList, TouchableOpacity, Image, ActivityIndicator, Text, Keyboard } from "react-native";
+import React, { useState, useEffect } from "react"; // 1. Добавили useEffect
+import { View, FlatList, TouchableOpacity, Image, ActivityIndicator, Text, Keyboard, Alert } from "react-native";
 import styled from "styled-components/native";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute } from "@react-navigation/native"; // 2. Добавили useRoute
 import { SafeAreaView } from "react-native-safe-area-context";
 import axios from "axios"; 
-import api from "../src/api/client"; // Наш клиент для бэкенда
+import api from "../src/api/client"; 
 
 import InputField from "../components/Input_field";
 
-// ... (Стили Header, OwlReadsTitle оставляем без изменений) ...
+// ... (Стили оставляем без изменений)
 const Header = styled.View`
   flex-direction: row;
   justify-content: space-between;
@@ -39,7 +39,6 @@ const ResultItem = styled.TouchableOpacity`
   shadow-opacity: 0.1;
   shadow-radius: 4px;
   border-width: 1px;
-  /* Если книга из нашей базы - подсветим рамку */
   border-color: ${({ isLocal }) => (isLocal ? "#890524" : "transparent")};
 `;
 
@@ -103,43 +102,52 @@ const SearchButton = styled.TouchableOpacity`
 
 export default function SearchBookScreen() {
   const navigation = useNavigation();
-  const [query, setQuery] = useState("");
+  const route = useRoute(); // Получаем доступ к параметрам навигации
+  
+  // Если пришли со сканера, берем код из параметров
+  const initialQuery = route.params?.initialQuery || "";
+  
+  const [query, setQuery] = useState(initialQuery);
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  const handleSearch = async () => {
-    if (!query.trim()) return;
+  // 3. Эффект для автоматического поиска при открытии экрана
+  useEffect(() => {
+    if (initialQuery) {
+      handleSearch(initialQuery);
+    }
+  }, [initialQuery]);
+
+  // Изменили функцию, чтобы она могла принимать аргумент напрямую
+  const handleSearch = async (searchQuery = query) => {
+    const finalQuery = searchQuery || query;
+    if (!finalQuery.trim()) return;
     
     Keyboard.dismiss();
     setLoading(true);
-    setResults([]); // Очищаем старые результаты
+    setResults([]); 
     
-    console.log("Начинаем поиск:", query);
-
     try {
-      // Запускаем два запроса параллельно: к нашему API и к Google
       const [localResponse, googleResponse] = await Promise.allSettled([
-        api.get(`/api/literature/search?q=${query}`),
-        axios.get(`https://www.googleapis.com/books/v1/volumes?q=${query}&maxResults=10`)
+        api.get(`/api/literature/search?q=${finalQuery}`),
+        axios.get(`https://www.googleapis.com/books/v1/volumes?q=${finalQuery}&maxResults=10`)
       ]);
 
       let combinedResults = [];
 
-      // 1. Обрабатываем ответ от НАШЕГО сервера
       if (localResponse.status === 'fulfilled') {
         const localBooks = localResponse.value.data.map(book => ({
-          id: `local_${book.id}`, // Уникальный ID
-          originalId: book.id,    // ID в нашей БД
+          id: `local_${book.id}`,
+          originalId: book.id,
           title: book.title,
           author: book.author,
           year: book.year,
           cover: book.cover_url,
-          source: 'local'         // Метка источника
+          source: 'local'
         }));
         combinedResults = [...combinedResults, ...localBooks];
       }
 
-      // 2. Обрабатываем ответ от Google Books
       if (googleResponse.status === 'fulfilled') {
         const items = googleResponse.value.data.items || [];
         const googleBooks = items.map((item) => {
@@ -161,6 +169,21 @@ export default function SearchBookScreen() {
 
       setResults(combinedResults);
 
+      // 4. ЛОГИКА ПЕРЕХОДА: Если ничего не нашли и это был поиск по ISBN (цифры)
+      if (combinedResults.length === 0 && /^\d+$/.test(finalQuery)) {
+        Alert.alert(
+          "Книга не найдена",
+          "В базах нет книги с таким штрихкодом. Добавить её вручную?",
+          [
+            { text: "Отмена", style: "cancel" },
+            { 
+              text: "Да", 
+              onPress: () => navigation.navigate("BookManualAdd", { book: { isbn: finalQuery } }) 
+            }
+          ]
+        );
+      }
+
     } catch (error) {
       console.error("Ошибка поиска:", error);
     } finally {
@@ -169,15 +192,11 @@ export default function SearchBookScreen() {
   };
 
   const handleSelectBook = (book) => {
-    // Передаем книгу на экран добавления
-    // Если source === 'local', мы знаем, что книга уже есть в БД (можно передать её ID)
-    // Если source === 'google', мы просто заполняем поля
     navigation.navigate("BookManualAdd", { book: book });
   };
 
   return (
     <View style={{ flex: 1, backgroundColor: "#FDF5E2" }}>
-      
       <SafeAreaView style={{ flex: 1 }}>
         <Header>
           <TouchableOpacity onPress={() => navigation.goBack()} style={{ width: 35, height: 35 }}>
@@ -187,24 +206,21 @@ export default function SearchBookScreen() {
           <View style={{ width: 35 }} />
         </Header>
 
-        {/* Обновленная строка поиска */}
         <SearchRow>
           <View style={{ flex: 1 }}>
             <InputField 
               placeholder="Название или автор..." 
               value={query}
               onChangeText={setQuery}
-              style={{ width: 'auto', marginHorizontal: 0 }} // Убираем отступы самого поля, так как они есть у SearchRow
-              
-              // Теперь эти пропсы будут работать благодаря исправлению в Шаге 1:
+              style={{ width: 'auto', marginHorizontal: 0 }}
               returnKeyType="search"
-              onSubmitEditing={handleSearch} 
+              onSubmitEditing={() => handleSearch()} 
             />
           </View>
 
-          <SearchButton onPress={handleSearch}>
+          <SearchButton onPress={() => handleSearch()}>
             <Image 
-              source={require("../assets/search.png")} // Убедись, что есть иконка лупы, или используй add_book временно
+              source={require("../assets/search.png")} 
               style={{ width: 24, height: 24, tintColor: '#FDF5E2' }} 
             />
           </SearchButton>
@@ -225,10 +241,14 @@ export default function SearchBookScreen() {
             renderItem={({ item }) => (
               <ResultItem 
                 onPress={() => handleSelectBook(item)}
-                isLocal={item.source === 'local'} // Передаем проп для стиля
+                isLocal={item.source === 'local'}
               >
                 {item.cover ? (
-                  <BookCover source={{ uri: item.cover }} resizeMode="cover" />
+                  <BookCover source={
+                    item.cover.startsWith('http') 
+                    ? { uri: item.cover } 
+                    : { uri: `${api.defaults.baseURL}${item.cover}` }
+                  } resizeMode="cover" />
                 ) : (
                   <BookCover source={require("../assets/default_cover_book.png")} resizeMode="cover" />
                 )}
@@ -244,7 +264,6 @@ export default function SearchBookScreen() {
             )}
           />
         )}
-
       </SafeAreaView>
     </View>
   );

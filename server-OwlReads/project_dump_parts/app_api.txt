@@ -718,6 +718,8 @@ import shutil
 from app.db.session import get_db
 from app.schemas.users_personal_data import UserPersonalData, UserPersonalDataCreate, UserVerifyEmail, UserPersonalDataUpdate
 from app.crud import users_personal_data as crud
+from app.core.security import get_password_hash
+from app.core.security import verify_password
 
 router = APIRouter()
 
@@ -743,12 +745,51 @@ def verify_email(data: UserVerifyEmail, db: Session = Depends(get_db)):
 
     return {"message": "Email verified successfully"}
 
+# app/api/users_personal_data.py
+from fastapi import UploadFile, File, Form # Проверь импорты
+
 @router.patch("/{user_id}/", response_model=UserPersonalData)
-def update_user_data(user_id: int, user_in: UserPersonalDataUpdate, db: Session = Depends(get_db)):
-    user = crud.update_user(db, user_id=user_id, obj_in=user_in)
-    if not user:
+async def update_user_data(
+    user_id: int,
+    username: str = Form(None),
+    email: str = Form(None),
+    old_password: str = Form(None),
+    password: str = Form(None),
+    profile_photo: str = Form(None), # Для названий пресетов (owl_icon_red и т.д.)
+    profile_photo_file: UploadFile = File(None), # Для загрузки своего фото
+    db: Session = Depends(get_db)
+):
+    # 1. Получаем пользователя
+    db_user = crud.get_user_by_id(db, user_id)
+    if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
-    return user
+
+    # 2. Проверка пароля (если меняется)
+    if password:
+        if not old_password or not verify_password(old_password, db_user.password_hash):
+            raise HTTPException(status_code=400, detail="Incorrect old password")
+        db_user.password_hash = get_password_hash(password)
+
+    # 3. Обработка фото
+    if profile_photo_file:
+        # Сохраняем файл
+        file_extension = profile_photo_file.filename.split(".")[-1]
+        file_name = f"avatar_{uuid.uuid4()}.{file_extension}"
+        file_path = f"uploads/{file_name}"
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(profile_photo_file.file, buffer)
+        db_user.profile_photo = f"/static/{file_name}"
+    elif profile_photo:
+        # Если пришло имя пресета
+        db_user.profile_photo = profile_photo
+
+    # 4. Обновляем остальные поля
+    if username: db_user.username = username
+    if email: db_user.email = email
+
+    db.commit()
+    db.refresh(db_user)
+    return db_user
 
 @router.post("/{user_id}/avatar")
 async def update_avatar(

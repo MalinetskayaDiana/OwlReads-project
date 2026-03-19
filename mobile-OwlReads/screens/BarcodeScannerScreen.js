@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from "react";
 import { Text, View, StyleSheet, TouchableOpacity, Image, Alert, ActivityIndicator } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute } from "@react-navigation/native"; // Добавили useRoute
 import styled from "styled-components/native";
 import api from "../src/api/client";
-import RedButton from "../components/Red_button"; // Импортируем твою кнопку
+import RedButton from "../components/Red_button";
 
 const Overlay = styled.View`
   flex: 1;
   background-color: rgba(0, 0, 0, 0.5);
-  justify-content: space-between; /* Чтобы разнести элементы */
+  justify-content: space-between;
   padding-vertical: 60px;
   align-items: center;
 `;
@@ -18,7 +18,7 @@ const ScanArea = styled.View`
   width: 280px;
   height: 200px;
   border-width: 2px;
-  border-color: ${(props) => (props.active ? "#890524" : "#fdf5e2")}; /* Меняем цвет, если код пойман */
+  border-color: ${(props) => (props.active ? "#890524" : "#fdf5e2")};
   border-radius: 20px;
   background-color: transparent;
   justify-content: center;
@@ -42,9 +42,15 @@ const StatusText = styled.Text`
 
 export default function BarcodeScannerScreen() {
   const [permission, requestPermission] = useCameraPermissions();
-  const [tempCode, setTempCode] = useState(null); // Храним код, который "видит" камера сейчас
+  const [tempCode, setTempCode] = useState(null);
   const [loading, setLoading] = useState(false);
   const navigation = useNavigation();
+  const route = useRoute();
+
+  // Получаем режим работы сканера (по умолчанию "search")
+  // "search" - переход на страницу поиска
+  // "fill" - просто возврат кода в форму добавления
+  const mode = route.params?.mode || "search"; 
 
   useEffect(() => {
     if (!permission) requestPermission();
@@ -61,36 +67,26 @@ export default function BarcodeScannerScreen() {
     );
   }
 
-  // Эта функция срабатывает постоянно, пока камера видит штрихкод
   const handleBarcodeDetection = ({ data }) => {
     if (data !== tempCode) {
-      setTempCode(data); // Просто запоминаем код в стейт
+      setTempCode(data);
     }
   };
 
-  // Эта функция срабатывает при нажатии на КРАСНУЮ КНОПКУ
-  const handleSearchPress = async () => {
+  // ИЗМЕНЕННАЯ ЛОГИКА НАЖАТИЯ
+  const handleActionPress = async () => {
     if (!tempCode) {
-      Alert.alert("Внимание", "Пожалуйста, наведите камеру на штрихкод так, чтобы рамка стала красной");
+      Alert.alert("Внимание", "Пожалуйста, наведите камеру на штрихкод");
       return;
     }
 
-    setLoading(true);
-    try {
-      // Наш новый бэкенд с цепочкой вызовов
-      const response = await api.get(`/api/literature/isbn/${tempCode}`);
-      navigation.navigate("BookManualAdd", { book: response.data });
-    } catch (error) {
-      if (error.response && error.response.status === 404) {
-        // Если вообще не нашли — ведем на форму, но подставляем ISBN
-        navigation.navigate("BookManualAdd", { 
-          book: { isbn: tempCode, title: "", author: "", source: "manual" } 
-        });
-      } else {
-        Alert.alert("Ошибка", "Не удалось связаться с сервером");
-      }
-    } finally {
-      setLoading(false);
+    if (mode === "fill") {
+      // ПУНКТ 3: Если мы пришли из формы добавления, просто возвращаемся назад с кодом
+      navigation.navigate("BookManualAdd", { scannedIsbn: tempCode });
+    } else {
+      // ПУНКТ 2: Переходим на экран поиска и передаем туда ISBN
+      // Логику "если не найдено - на добавление" мы пропишем в самом экране поиска
+      navigation.navigate("BookSearch", { initialQuery: tempCode });
     }
   };
 
@@ -122,8 +118,9 @@ export default function BarcodeScannerScreen() {
               <ActivityIndicator size="large" color="#FDF5E2" />
             ) : (
               <RedButton
-                name="Распознать книгу" 
-                onPress={handleSearchPress} 
+                // Меняем текст в зависимости от режима
+                name={mode === "fill" ? "Вставить в форму" : "Найти книгу"} 
+                onPress={handleActionPress} 
               />
             )}
           </View>

@@ -38,9 +38,8 @@ const BookItem = styled(TouchableOpacity)`
 
 const BookCover = styled.Image`
   width: 70px;
-  height: 100px;
+  height: 103px;
   border-radius: 5px;
-  background-color: #E8DFC9;
 `;
 
 const BookTitleSnippet = styled.Text`
